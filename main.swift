@@ -37,6 +37,13 @@ var typedBuffer = ""
 
 func myEventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     if type == .keyDown {
+        // If our app is currently active (search window open), bypass text expansion
+        // so that typing inside ClipSnippet is not intercepted and doesn't pollute the trigger buffer.
+        if NSApp.isActive {
+            typedBuffer = ""
+            return Unmanaged.passUnretained(event)
+        }
+        
         guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
         let appDelegate = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
         
@@ -90,8 +97,12 @@ struct ClipItem: Codable {
     let category: String?
 }
 
-class BorderlessWindow: NSWindow {
+class BorderlessWindow: NSPanel {
     override var canBecomeKey: Bool {
+        return true
+    }
+    
+    override var canBecomeMain: Bool {
         return true
     }
     
@@ -126,7 +137,7 @@ class BorderlessWindow: NSWindow {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     static var shared: AppDelegate?
     
     var window: BorderlessWindow!
@@ -223,6 +234,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         window.backgroundColor = .clear
         window.hasShadow = true
         window.level = .statusBar
+        window.delegate = self
         
         // Glassmorphic background blur
         visualEffectView = NSVisualEffectView(frame: CGRect(x: 0, y: 0, width: width, height: height))
@@ -260,11 +272,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         tableView.doubleAction = #selector(tableDoubleClicked)
         
         let col1 = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("text"))
-        col1.width = width - 80
+        col1.width = width - 130
+        col1.resizingMask = [.autoresizingMask]
         tableView.addTableColumn(col1)
         
         let col2 = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("shortcut"))
-        col2.width = 50
+        col2.width = 60
+        col2.resizingMask = []
+        if let cell = col2.dataCell as? NSCell {
+            cell.alignment = .center
+        }
         tableView.addTableColumn(col2)
         
         scrollView.documentView = tableView
@@ -369,14 +386,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         updateAllItems()
         searchField.stringValue = ""
         filterItems(query: "")
-        window.makeKeyAndOrderFront(nil)
+        
+        // Order front regardless to bypass any window level or accessory activation restrictions
+        window.orderFrontRegardless()
+        
+        // Modern application activation
+        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
         NSApp.activate(ignoringOtherApps: true)
-        window.makeFirstResponder(searchField)
+        
+        // Make window key and front
+        window.makeKeyAndOrderFront(nil)
+        
+        DispatchQueue.main.async {
+            NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+            NSApp.activate(ignoringOtherApps: true)
+            self.window.orderFrontRegardless()
+            self.window.makeKeyAndOrderFront(nil)
+            self.window.makeFirstResponder(self.searchField)
+        }
     }
     
     func hideWindow() {
         window.orderOut(nil)
         NSApp.hide(nil)
+    }
+    
+    func windowDidResignKey(_ notification: Notification) {
+        hideWindow()
     }
     
     // ----------------------------------------------------
