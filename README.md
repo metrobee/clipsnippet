@@ -46,13 +46,13 @@ Changes apply **instantly as soon as you save the file and reopen the search win
 #### Configuration Example:
 ```json
 {
-  "airbnb-review": {
-    "::ar5": "Tere [[Guest Name]], aitäh külastamast! Great guest, highly recommended! 5/5 stars.",
-    ":ar-clean": "Left the apartment extremely clean and tidy."
+  "work": {
+    ":greet": "Hello [[Client Name]], thank you for contacting us! How can I help you today?",
+    ":sig": "Best regards,\nJohn Doe\nSupport Team"
   },
   "personal": {
-    ":phone": "+372 555 5555",
-    ":email": "metrobee@example.com"
+    ":phone": "+1 555 123 4567",
+    ":email": "johndoe@example.com"
   },
   "General": {
     ":date": "Current Date",
@@ -62,8 +62,8 @@ Changes apply **instantly as soon as you save the file and reopen the search win
 ```
 
 *   **Dynamic Snippets:** `:date` and `:time` are automatically replaced with the current date and time upon pasting.
-*   **Variables:** You can use placeholders like `[[variable_name]]` (as shown in the `:ar5` example with `[[Guest Name]]`). When triggered, the app displays a dialog to fill in the variable value before pasting.
-*   **Real-time Text Expansion:** Snippets whose triggers start with a colon (e.g., `:airev1` or `:phone`) will automatically expand in real-time as you type them in any macOS text field (just like Espanso). Triggers without a colon prefix (e.g., `airbnb arvustus 1`) do not auto-expand to prevent accidental replacements while typing normal text, but they can still be searched and selected using the search window (`Cmd + Option + C`).
+*   **Variables:** You can use placeholders like `[[variable_name]]` (as shown in the `:greet` example with `[[Client Name]]`). When triggered, the app displays a dialog to fill in the variable value before pasting.
+*   **Real-time Text Expansion:** Snippets whose triggers start with a colon (e.g., `:sig` or `:phone`) will automatically expand in real-time as you type them in any macOS text field (just like Espanso). Triggers without a colon prefix (e.g., `my custom shortcut`) do not auto-expand to prevent accidental replacements while typing normal text, but they can still be searched and selected using the search window (`Cmd + Option + C`).
 
 ### 🛠️ Automatic Startup (LaunchAgent)
 
@@ -135,13 +135,13 @@ Uued laiendused ja kategooriad rakenduvad **koheselt pärast faili salvestamist 
 ### Seadistuse näide:
 ```json
 {
-  "airbnb-review": {
-    ":ar5": "Tere [[Külalise nimi]], aitäh külastamast! Great guest, highly recommended! 5/5 stars.",
-    ":ar-clean": "Left the apartment extremely clean and tidy."
+  "töö": {
+    ":tervitus": "Tere [[Kliendi nimi]], aitäh ühendust võtmast! Kuidas saan Teid täna aidata?",
+    ":allkiri": "Parimate soovidega,\nJaan Tamm\nKlienditugi"
   },
   "isiklik": {
     ":tel": "+372 555 5555",
-    ":email": "metrobee@example.com"
+    ":email": "jaantamm@example.com"
   },
   "Üldised": {
     ":date": "Current Date",
@@ -151,8 +151,8 @@ Uued laiendused ja kategooriad rakenduvad **koheselt pärast faili salvestamist 
 ```
 
 *   **Dünaamilised laiendused:** `:date` ja `:time` asendatakse kleepimisel automaatselt jooksva kuupäeva ja kellaajaga.
-*   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]` (nagu ülaltoodud `:ar5` näites `[[Külalise nimi]]`). Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
-*   **Reaalajas asendamine (Text Expansion):** Kõik tekstilaiendused, mille triger algab kooloniga (nt `:airev1` või `:tel`), asendatakse kirjutamise ajal automaatselt reaalajas igas macOS-i rakenduses (täpselt nagu Espansos). Trigerid, mis ei alga kooloniga (nt `airbnb arvustus 1`), ei asendu kirjutamisel automaatselt (et vältida juhuslikke asendusi tavalise teksti kirjutamisel), kuid neid saab ikkagi otsida ja kleepida otsinguakna kaudu (`Cmd + Option + C`).
+*   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]` (nagu ülaltoodud `:tervitus` näites `[[Kliendi nimi]]`). Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
+*   **Reaalajas asendamine (Text Expansion):** Kõik tekstilaiendused, mille triger algab kooloniga (nt `:allkiri` või `:tel`), asendatakse kirjutamise ajal automaatselt reaalajas igas macOS-i rakenduses (täpselt nagu Espansos). Trigerid, mis ei alga kooloniga (nt `minu kohandatud shortcut`), ei asendu kirjutamisel automaatselt (et vältida juhuslikke asendusi tavalise teksti kirjutamisel), kuid neid saab ikkagi otsida ja kleepida otsinguakna kaudu (`Cmd + Option + C`).
 
 ---
 
