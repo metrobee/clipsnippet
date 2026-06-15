@@ -10,6 +10,15 @@ ClipSnippet is a lightweight, fast macOS background application that combines **
 
 The application runs silently in the background, does not show up in the Dock (runs in agent mode), and adds a small `📋` icon to the macOS menu bar.
 
+### 💾 Installation
+
+You can install ClipSnippet using **Homebrew** via a custom Tap:
+
+```bash
+brew tap metrobee/tap
+brew install --cask clipsnippet
+```
+
 ### 🚀 Usage
 
 *   **Activate:** Press **`Cmd + Option + C`** (or click the `📋` menu bar icon) to open the search window.
@@ -86,6 +95,15 @@ swiftc -sdk $(xcrun --show-sdk-path) -O main.swift -o ClipSnippet && ./package.s
 ClipSnippet on kerge ja kiire macOS-i taustarakendus, mis ühendab endas **lõikelaua ajaloo (Clipboard History)** ja **tekstilaiendused (Snippets / Espanso)**. See on loodud asendama Alfredi lõikelauda ja Espanot ühes lihtsas, kiirelt kohandatavas programmis.
 
 Rakendus töötab taustal, ei oma ikooni Dockis (töötab agent-režiimis) ning lisab süsteemi ülemisse menüüribasse väikese `📋` ikooni.
+
+### 💾 Paigaldamine (Installation)
+
+Saad ClipSnippeti paigaldada kasutades **Homebrew** paketihaldurit:
+
+```bash
+brew tap metrobee/tap
+brew install --cask clipsnippet
+```
 
 ### 🚀 Kasutamine
 
