@@ -154,6 +154,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var lastChangeCount = 0
     var clipboardHistory: [String] = []
     var customSnippets: [String: [String: String]] = [:]
+    var fileMonitorSource: DispatchSourceFileSystemObject?
     
     enum TableRow {
         case header(title: String)
@@ -171,6 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         // Load data
         loadSnippets()
         loadHistory()
+        startMonitoringSnippetsFile()
         
         // Set up status bar
         setupStatusItem()
@@ -491,6 +493,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 }
             }
         }
+    }
+    
+    func startMonitoringSnippetsFile() {
+        let fileDescriptor = open(snippetsFile.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else { return }
+        
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .delete, .rename],
+            queue: DispatchQueue.main
+        )
+        
+        source.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            logMessage("Snippets file change detected, reloading...")
+            
+            let flags = source.data
+            if flags.contains(.delete) || flags.contains(.rename) {
+                self.fileMonitorSource?.cancel()
+                self.fileMonitorSource = nil
+                close(fileDescriptor)
+                
+                // Wait 0.1s for the file replacement to complete, then monitor again and reload
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.startMonitoringSnippetsFile()
+                    self.loadSnippets()
+                    self.updateAllItems()
+                }
+            } else {
+                self.loadSnippets()
+                self.updateAllItems()
+            }
+        }
+        
+        source.setCancelHandler {
+            close(fileDescriptor)
+        }
+        
+        self.fileMonitorSource = source
+        source.resume()
     }
     
     func updateAllItems() {
