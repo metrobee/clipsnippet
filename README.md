@@ -63,6 +63,7 @@ Changes apply **instantly as soon as you save the file and reopen the search win
 
 *   **Dynamic Snippets:** `:date` and `:time` are automatically replaced with the current date and time upon pasting.
 *   **Variables:** You can use placeholders like `[[variable_name]]` (as shown in the `:ar5` example with `[[Guest Name]]`). When triggered, the app displays a dialog to fill in the variable value before pasting.
+*   **Real-time Text Expansion:** Snippets whose triggers start with a colon (e.g., `:airev1` or `:phone`) will automatically expand in real-time as you type them in any macOS text field (just like Espanso). Triggers without a colon prefix (e.g., `airbnb arvustus 1`) do not auto-expand to prevent accidental replacements while typing normal text, but they can still be searched and selected using the search window (`Cmd + Option + C`).
 
 ### 🛠️ Automatic Startup (LaunchAgent)
 
@@ -151,6 +152,7 @@ Uued laiendused ja kategooriad rakenduvad **koheselt pärast faili salvestamist 
 
 *   **Dünaamilised laiendused:** `:date` ja `:time` asendatakse kleepimisel automaatselt jooksva kuupäeva ja kellaajaga.
 *   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]` (nagu ülaltoodud `:ar5` näites `[[Külalise nimi]]`). Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
+*   **Reaalajas asendamine (Text Expansion):** Kõik tekstilaiendused, mille triger algab kooloniga (nt `:airev1` või `:tel`), asendatakse kirjutamise ajal automaatselt reaalajas igas macOS-i rakenduses (täpselt nagu Espansos). Trigerid, mis ei alga kooloniga (nt `airbnb arvustus 1`), ei asendu kirjutamisel automaatselt (et vältida juhuslikke asendusi tavalise teksti kirjutamisel), kuid neid saab ikkagi otsida ja kleepida otsinguakna kaudu (`Cmd + Option + C`).
 
 ---
 

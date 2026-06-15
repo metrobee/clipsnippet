@@ -25,13 +25,61 @@ func logMessage(_ msg: String) {
         }
     }
 }
-
 func hotKeyHandler(nextHandler: EventHandlerCallRef?, theEvent: EventRef?, userData: UnsafeMutableRawPointer?) -> OSStatus {
     logMessage("Hotkey handler triggered globally!")
     DispatchQueue.main.async {
         AppDelegate.shared?.toggleWindow()
     }
     return noErr
+}
+
+var typedBuffer = ""
+
+func myEventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    if type == .keyDown {
+        guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+        let appDelegate = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
+        
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        
+        // backspace
+        if keyCode == 51 {
+            if !typedBuffer.isEmpty {
+                typedBuffer.removeLast()
+            }
+            return Unmanaged.passUnretained(event)
+        }
+        
+        if let nsEvent = NSEvent(cgEvent: event) {
+            let flags = nsEvent.modifierFlags
+            if flags.contains(.command) || flags.contains(.control) {
+                typedBuffer = ""
+                return Unmanaged.passUnretained(event)
+            }
+            
+            if let chars = nsEvent.characters, !chars.isEmpty {
+                let char = chars.first!
+                
+                // Reset buffer on Return (36), Tab (48), Escape (53)
+                if keyCode == 36 || keyCode == 48 || keyCode == 53 {
+                    typedBuffer = ""
+                    return Unmanaged.passUnretained(event)
+                }
+                
+                typedBuffer.append(char)
+                if typedBuffer.count > 50 {
+                    typedBuffer.removeFirst()
+                }
+                
+                if let matchedTrigger = appDelegate.checkTriggers(buffer: typedBuffer) {
+                    typedBuffer = ""
+                    appDelegate.expandSnippet(trigger: matchedTrigger, deleteCount: matchedTrigger.count)
+                    return nil
+                }
+            }
+        }
+    }
+    return Unmanaged.passUnretained(event)
 }
 
 struct ClipItem: Codable {
@@ -124,6 +172,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         
         // Register global shortcut (Cmd + Option + C)
         registerHotKey()
+        
+        // Setup global event tap for text expansion
+        setupEventTap()
         
         // Start clipboard monitoring timer (every 0.5 seconds)
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -271,6 +322,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         hotKeyID3.id = UInt32(3)
         let status3 = RegisterEventHotKey(49, modifiers2, hotKeyID3, GetApplicationEventTarget(), 0, &self.hotKeyRef3)
         logMessage("Register Control+Option+Space status: \(status3)")
+    }
+    
+    func setupEventTap() {
+        let eventMask = (1 << CGEventType.keyDown.rawValue)
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: myEventTapCallback,
+            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        ) else {
+            logMessage("Failed to create event tap - please check Accessibility permissions!")
+            return
+        }
+        
+        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+        logMessage("Global event tap (text expansion) set up successfully.")
     }
     
     @objc func toggleWindow() {
@@ -560,6 +631,63 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
     }
 
+    func checkTriggers(buffer: String) -> String? {
+        for category in customSnippets.keys {
+            if let snippets = customSnippets[category] {
+                for trigger in snippets.keys {
+                    if trigger.hasPrefix(":") && buffer.hasSuffix(trigger) {
+                        return trigger
+                    }
+                }
+            }
+        }
+        return nil
+    }
+    
+    func expandSnippet(trigger: String, deleteCount: Int) {
+        var textToPaste: String? = nil
+        for category in customSnippets.keys {
+            if let snippets = customSnippets[category], let text = snippets[trigger] {
+                textToPaste = text
+                break
+            }
+        }
+        
+        guard var text = textToPaste else { return }
+        
+        // Evaluate dynamic snippets
+        if trigger == ":date" {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            text = formatter.string(from: Date())
+        } else if trigger == ":time" {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm:ss"
+            text = formatter.string(from: Date())
+        }
+        
+        // Hide window if open
+        DispatchQueue.main.async {
+            self.hideWindow()
+        }
+        
+        let backspacesToDelete = deleteCount - 1
+        
+        DispatchQueue.main.async {
+            for _ in 0..<backspacesToDelete {
+                let bsDown = CGEvent(keyboardEventSource: nil, virtualKey: 51, keyDown: true)
+                let bsUp = CGEvent(keyboardEventSource: nil, virtualKey: 51, keyDown: false)
+                bsDown?.post(tap: .cgSessionEventTap)
+                bsUp?.post(tap: .cgSessionEventTap)
+            }
+            
+            // Wait 0.1s for backspaces to register, then paste
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.pasteDirectly(text: text)
+            }
+        }
+    }
+
     func selectAndPaste(index: Int) {
         guard index >= 0 && index < filteredRows.count else { return }
         guard case .item(let item) = filteredRows[index] else { return }
@@ -581,6 +709,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         
         // Hide main window first so the target window gets focus back
         hideWindow()
+        
+        pasteDirectly(text: textToPaste)
+    }
+
+    func pasteDirectly(text: String) {
+        var textToPaste = text
         
         // Check for variable prompts
         let variables = extractVariables(from: textToPaste)
