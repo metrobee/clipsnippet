@@ -36,7 +36,7 @@ Uued laiendused ja kategooriad rakenduvad **koheselt pärast faili salvestamist 
 ```json
 {
   "airbnb-review": {
-    ":ar5": "Great guest, highly recommended! 5/5 stars.",
+    ":ar5": "Tere [[Külalise nimi]], aitäh külastamast! Great guest, highly recommended! 5/5 stars.",
     ":ar-clean": "Left the apartment extremely clean and tidy."
   },
   "isiklik": {
@@ -51,7 +51,7 @@ Uued laiendused ja kategooriad rakenduvad **koheselt pärast faili salvestamist 
 ```
 
 *   **Dünaamilised laiendused:** `:date` ja `:time` asendatakse kleepimisel automaatselt jooksva kuupäeva ja kellaajaga.
-*   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]`. Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
+*   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]` (nagu ülaltoodud `:ar5` näites `[[Külalise nimi]]`). Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
 
 ---
 
