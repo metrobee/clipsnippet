@@ -41,7 +41,7 @@ Snippets are defined in a simple JSON file located in your home directory:
 
 To edit this file, click the `📋` menu bar icon and choose **Edit Snippets...** – it will open in your default text editor.
 
-Changes apply **instantly as soon as you save the file and reopen the search window** (no app restart needed).
+Changes apply **instantly in the background as soon as you save the file** (no app restart or window reopening needed, text expansion updates in real-time).
 
 #### Configuration Example:
 ```json
@@ -130,7 +130,7 @@ Tekstilaiendused on kirjeldatud lihtsas JSON-failis, mis asub sinu kodukaustas t
 
 Selle faili muutmiseks võid klõpsata menüüribal ikoonil `📋` ja valida **Edit Snippets...** – fail avaneb sinu vaikimisi tekstiredaktoris.
 
-Uued laiendused ja kategooriad rakenduvad **koheselt pärast faili salvestamist ja otsinguakna uuesti avamist** (rakendust ei ole vaja taaskäivitada).
+Uued laiendused ja kategooriad rakenduvad **koheselt taustal pärast faili salvestamist** (rakendust ei ole vaja taaskäivitada ega otsinguakent avada, tekstiasendused uuenevad reaalajas).
 
 ### Seadistuse näide:
 ```json
