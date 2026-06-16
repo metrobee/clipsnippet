@@ -1,5 +1,6 @@
 import Cocoa
 import Carbon
+import Contacts
 
 // Key codes
 let kVK_ANSI_C: UInt32 = 0x08
@@ -97,6 +98,11 @@ struct ClipItem: Codable {
     let category: String?
 }
 
+struct ContactClipItem {
+    let item: ClipItem
+    let searchString: String
+}
+
 class BorderlessWindow: NSPanel {
     override var canBecomeKey: Bool {
         return true
@@ -155,6 +161,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var clipboardHistory: [String] = []
     var customSnippets: [String: [String: String]] = [:]
     var fileMonitorSource: DispatchSourceFileSystemObject?
+    var allContactsCache: [ContactClipItem] = []
     
     enum TableRow {
         case header(title: String)
@@ -173,6 +180,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         loadSnippets()
         loadHistory()
         startMonitoringSnippetsFile()
+        
+        // Request Contacts Access
+        let contactStore = CNContactStore()
+        let contactStatus = CNContactStore.authorizationStatus(for: .contacts)
+        if contactStatus == .notDetermined {
+            logMessage("Requesting Contacts access...")
+            contactStore.requestAccess(for: .contacts) { [weak self] granted, error in
+                if granted {
+                    logMessage("Contacts access granted.")
+                    self?.loadContactsCache()
+                } else {
+                    logMessage("Contacts access denied: \(String(describing: error))")
+                }
+            }
+        } else if contactStatus == .authorized {
+            loadContactsCache()
+        }
         
         // Set up status bar
         setupStatusItem()
@@ -205,6 +229,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
         
         let menu = NSMenu()
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
+        let versionItem = NSMenuItem(title: "ClipSnippet v\(version)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+        menu.addItem(NSMenuItem.separator())
+        
         menu.addItem(NSMenuItem(title: "Show Clipboard (⌥⌘C)", action: #selector(toggleWindow), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Edit Snippets...", action: #selector(editSnippetsFile), keyEquivalent: ""))
@@ -213,6 +243,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = menu
     }
+
     
     func setupWindow() {
         let width: CGFloat = 600
@@ -254,7 +285,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         searchField.drawsBackground = false
         searchField.focusRingType = .none
         searchField.font = NSFont.systemFont(ofSize: 18)
-        searchField.placeholderString = "Type to search history & snippets..."
+        searchField.placeholderString = "Type to search history, snippets & contacts..."
         searchField.delegate = self
         
         // Table view scroll view
@@ -385,6 +416,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
         
         loadSnippets()
+        loadContactsCache()
         updateAllItems()
         searchField.stringValue = ""
         filterItems(query: "")
@@ -592,6 +624,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
         }
         
+        // 3. Process contacts (query must be at least 2 characters)
+        if query.count >= 2 {
+            let matchingContacts = fetchContacts(query: query)
+            if !matchingContacts.isEmpty {
+                newRows.append(.header(title: "👥 Contacts"))
+                for item in matchingContacts {
+                    newRows.append(.item(item))
+                }
+            }
+        }
+        
         filteredRows = newRows
         tableView.reloadData()
         
@@ -604,6 +647,94 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             tableView.scrollRowToVisible(firstSelectable)
         }
     }
+    
+    func fetchContacts(query: String) -> [ClipItem] {
+        let lowerQuery = query.lowercased()
+        let queryWords = lowerQuery.split(separator: " ").map { String($0) }
+        if queryWords.isEmpty { return [] }
+        
+        let filtered = allContactsCache.filter { contactItem in
+            return queryWords.allSatisfy { contactItem.searchString.contains($0) }
+        }
+        
+        return filtered.map { $0.item }
+    }
+
+    func loadContactsCache() {
+        let store = CNContactStore()
+        let authorizationStatus = CNContactStore.authorizationStatus(for: .contacts)
+        guard authorizationStatus == .authorized else { return }
+        
+        let keysToFetch = [
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactNicknameKey as CNKeyDescriptor,
+            CNContactOrganizationNameKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+            CNContactEmailAddressesKey as CNKeyDescriptor
+        ]
+        
+        let request = CNContactFetchRequest(keysToFetch: keysToFetch)
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            var list: [ContactClipItem] = []
+            do {
+                try store.enumerateContacts(with: request) { contact, _ in
+                    let given = contact.givenName
+                    let family = contact.familyName
+                    let nickname = contact.nickname
+                    let fullName = "\(given) \(family)".trimmingCharacters(in: .whitespaces)
+                    let nameToUse = fullName.isEmpty ? (nickname.isEmpty ? "Unknown" : nickname) : fullName
+                    
+                    let orgName = contact.organizationName
+                    let orgStr = orgName.isEmpty ? "" : " [\(orgName)]"
+                    
+                    var searchParts = [given, family, fullName, nickname, orgName]
+                    for phone in contact.phoneNumbers {
+                        searchParts.append(phone.value.stringValue)
+                    }
+                    for email in contact.emailAddresses {
+                        searchParts.append(email.value as String)
+                    }
+                    let contactSearchString = searchParts.filter { !$0.isEmpty }.joined(separator: " ").lowercased()
+                    
+                    // Add phone numbers
+                    for phone in contact.phoneNumbers {
+                        let number = phone.value.stringValue
+                        let rawLabel = phone.label ?? ""
+                        let localizedLabel = CNLabeledValue<NSString>.localizedString(forLabel: rawLabel)
+                        
+                        let title = "👤 \(nameToUse)\(orgStr) (\(localizedLabel)): \(number)"
+                        let item = ClipItem(text: number, isSnippet: false, trigger: nil, title: title, category: "Contacts")
+                        list.append(ContactClipItem(item: item, searchString: contactSearchString))
+                    }
+                    
+                    // Add emails
+                    for email in contact.emailAddresses {
+                        let address = email.value as String
+                        let rawLabel = email.label ?? ""
+                        let localizedLabel = CNLabeledValue<NSString>.localizedString(forLabel: rawLabel)
+                        
+                        let title = "✉️ \(nameToUse)\(orgStr) (\(localizedLabel)): \(address)"
+                        let item = ClipItem(text: address, isSnippet: false, trigger: nil, title: title, category: "Contacts")
+                        list.append(ContactClipItem(item: item, searchString: contactSearchString))
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    self?.allContactsCache = list
+                    logMessage("Loaded \(list.count) contact items into cache.")
+                    if self?.window.isVisible == true {
+                        self?.updateAllItems()
+                    }
+                }
+            } catch {
+                logMessage("Failed to load contacts cache: \(error)")
+            }
+        }
+    }
+
+
+
     
     // ----------------------------------------------------
     // Action handlers

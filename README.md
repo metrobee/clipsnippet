@@ -22,7 +22,7 @@ brew install --cask clipsnippet
 ### 🚀 Usage
 
 *   **Activate:** Press **`Cmd + Option + C`** (or click the `📋` menu bar icon) to open the search window.
-*   **Search:** The search window opens centered on your screen and is instantly ready for typing. You can search through clipboard history, snippet triggers, or snippet categories.
+*   **Search:** The search window opens centered on your screen and is instantly ready for typing. You can search through clipboard history, snippet triggers, snippet categories, or macOS contacts (when typing 2 or more characters).
 *   **Visual Grouping:** The list is grouped under native section headers:
     *   `📋 Clipboard History` – Your recently copied items (displayed first).
     *   `⚡️ Snippets: <Category>` – Your custom text expansions grouped by category.
@@ -65,7 +65,17 @@ Changes apply **instantly in the background as soon as you save the file** (no a
 *   **Variables:** You can use placeholders like `[[variable_name]]` (as shown in the `:greet` example with `[[Client Name]]`). When triggered, the app displays a dialog to fill in the variable value before pasting.
 *   **Real-time Text Expansion:** Snippets whose triggers start with a colon (e.g., `:sig` or `:phone`) will automatically expand in real-time as you type them in any macOS text field (just like Espanso). Triggers without a colon prefix (e.g., `my custom shortcut`) do not auto-expand to prevent accidental replacements while typing normal text, but they can still be searched and selected using the search window (`Cmd + Option + C`).
 
+### 👥 Contacts Integration (v1.2.0+)
+
+ClipSnippet includes a built-in search for your local macOS Contacts (synced via iCloud or Google Contacts).
+*   **Trigger:** Type at least 2 characters in the search field.
+*   **Search Fields:** Matches first name, last name, nickname, email address, phone number, and organization.
+*   **Multi-word Search:** Supports AND matching (e.g., searching `madis meldre` will find contacts whose details match both words).
+*   **Asynchronous Loading:** Contacts are cached asynchronously in a background thread to prevent UI lagging.
+*   **Permissions:** Requires Contacts permission (`NSContactsUsageDescription`). macOS will prompt you on first use.
+
 ### 🛠️ Automatic Startup (LaunchAgent)
+
 
 The application can start automatically at login using a macOS LaunchAgent.
 
@@ -109,7 +119,7 @@ brew install --cask clipsnippet
 ### 🚀 Kasutamine
 
 *   **Käivitamine:** Vajuta klahvikombinatsiooni **`Cmd + Option + C`** (või klõpsa `📋` ikoonil menüüribal), et avada otsinguaken.
-*   **Otsimine:** Otsinguaken avaneb alati ekraani keskel ja on kohe kirjutamiseks valmis. Otsida saab nii kopeeritud tekstide sisust, tekstilaienduste trigeritest kui ka kategooriatest.
+*   **Otsimine:** Otsinguaken avaneb alati ekraani keskel ja on kohe kirjutamiseks valmis. Otsida saab nii kopeeritud tekstide sisust, tekstilaienduste trigeritest, kategooriatest kui ka macOS-i kontaktidest (kui sisestad vähemalt 2 tähte).
 *   **Grupeerimine:** Nimekiri on jagatud visuaalselt kategooriateks:
     *   `📋 Clipboard History` – Lõikelaua ajalugu (kuvatakse kõige esimesena).
     *   `⚡️ Snippets: <Kategooria>` – Kasutaja seadistatud laiendused vastavalt JSON-faili jaotustele.
@@ -154,9 +164,17 @@ Uued laiendused ja kategooriad rakenduvad **koheselt taustal pärast faili salve
 *   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]` (nagu ülaltoodud `:tervitus` näites `[[Kliendi nimi]]`). Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
 *   **Reaalajas asendamine (Text Expansion):** Kõik tekstilaiendused, mille triger algab kooloniga (nt `:allkiri` või `:tel`), asendatakse kirjutamise ajal automaatselt reaalajas igas macOS-i rakenduses (täpselt nagu Espansos). Trigerid, mis ei alga kooloniga (nt `minu kohandatud shortcut`), ei asendu kirjutamisel automaatselt (et vältida juhuslikke asendusi tavalise teksti kirjutamisel), kuid neid saab ikkagi otsida ja kleepida otsinguakna kaudu (`Cmd + Option + C`).
 
----
+### 👥 Kontaktide integratsioon (v1.2.0+)
+
+ClipSnippet sisaldab sisseehitatud macOS-i kontaktide otsingut (mis toimib kohalike, iCloudi või Google'i kontaktidega).
+*   **Käivitamine:** Kirjuta otsinguväljale vähemalt 2 tähte.
+*   **Otsitavad väljad:** Otsib eesnime, perekonnanime, hüüdnime, e-posti aadressi, telefoninumbri ja ettevõtte/organisatsiooni väljadelt.
+*   **Mitme sõnaga otsing:** Toetab AND-otsingut (nt `madis meldre` leiab kontaktid, kelle andmetes esinevad mõlemad sõnad).
+*   **Asünkroonne taustatöö:** Kontaktid laetakse ja puhverdatakse taustal, et otsinguaken töötaks ilma igasuguse viivituseta.
+*   **Õigused:** Vajab kontaktide lugemise õigust (`NSContactsUsageDescription`). macOS küsib seda esimesel käivitamisel.
 
 ## 🛠️ Automaatne käivitumine sisselogimisel (LaunchAgent)
+
 
 Rakendus on seadistatud käivituma automaatselt arvuti sisselülitamisel macOS LaunchAgent abil.
 
