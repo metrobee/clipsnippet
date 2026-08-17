@@ -37,6 +37,17 @@ func hotKeyHandler(nextHandler: EventHandlerCallRef?, theEvent: EventRef?, userD
 var typedBuffer = ""
 
 func myEventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        if let refcon = refcon {
+            let appDelegate = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
+            if let tap = appDelegate.eventTapRef {
+                CGEvent.tapEnable(tap: tap, enable: true)
+                logMessage("Re-enabled event tap after timeout.")
+            }
+        }
+        return Unmanaged.passUnretained(event)
+    }
+    
     if type == .keyDown {
         // If our app is currently active (search window open), bypass text expansion
         // so that typing inside ClipSnippet is not intercepted and doesn't pollute the trigger buffer.
@@ -719,6 +730,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var customSnippets: [String: [String: String]] = [:]
     var fileMonitorSource: DispatchSourceFileSystemObject?
     var allContactsCache: [ContactClipItem] = []
+    var eventTapRef: CFMachPort?
+    var eventTapSource: CFRunLoopSource?
     
     enum TableRow {
         case header(title: String)
@@ -932,6 +945,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     }
     
     func setupEventTap() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let isTrusted = AXIsProcessTrustedWithOptions(options)
+        logMessage("Accessibility trusted status: \(isTrusted)")
+        
         let eventMask = (1 << CGEventType.keyDown.rawValue)
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -941,13 +958,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             callback: myEventTapCallback,
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         ) else {
-            logMessage("Failed to create event tap - please check Accessibility permissions!")
+            logMessage("Failed to create event tap - please check Accessibility permissions in System Settings -> Privacy & Security -> Accessibility!")
+            // Retry periodically in case user toggles permission in System Settings
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                if self?.eventTapRef == nil {
+                    self?.setupEventTap()
+                }
+            }
             return
         }
         
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        self.eventTapRef = eventTap
+        self.eventTapSource = runLoopSource
         logMessage("Global event tap (text expansion) set up successfully.")
     }
     
