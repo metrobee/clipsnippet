@@ -158,7 +158,7 @@ class SystemCommands {
                 icon: "🗑️",
                 category: .files,
                 keywords: ["delete", "remove", "clean", "clear", "prügikast", "tühjenda"],
-                requiresConfirmation: true,
+                requiresConfirmation: false,
                 execute: { self.emptyTrash() }
             ),
             SystemCommand(
@@ -319,32 +319,28 @@ class SystemCommands {
     // MARK: - Files & Storage Actions
     
     private func emptyTrash() {
-        logMessage("SystemCommand: Empty Trash")
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText = "Empty Trash?"
-            alert.informativeText = "Are you sure you want to permanently delete all items in the Trash? This action cannot be undone."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Empty Trash")
-            alert.addButton(withTitle: "Cancel")
-            
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                let script = """
-                tell application "Finder"
-                    empty trash
-                end tell
-                """
-                if let appleScript = NSAppleScript(source: script) {
-                    var error: NSDictionary?
-                    appleScript.executeAndReturnError(&error)
-                    if let error = error {
-                        logMessage("Empty Trash failed: \(error)")
-                    } else {
-                        logMessage("Empty Trash completed successfully")
-                    }
+        logMessage("SystemCommand: Empty Trash (Instant & Silent)")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let trashPath = NSHomeDirectory() + "/.Trash"
+            if let items = try? FileManager.default.contentsOfDirectory(atPath: trashPath) {
+                for item in items {
+                    let itemURL = URL(fileURLWithPath: trashPath).appendingPathComponent(item)
+                    try? FileManager.default.removeItem(at: itemURL)
                 }
             }
+            
+            let script = """
+            tell application "Finder"
+                ignoring application responses
+                    empty trash
+                end ignoring
+            end tell
+            """
+            if let appleScript = NSAppleScript(source: script) {
+                var error: NSDictionary?
+                appleScript.executeAndReturnError(&error)
+            }
+            logMessage("Empty Trash completed instantly and silently.")
         }
     }
     
@@ -944,9 +940,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         logMessage("Register Control+Option+Space status: \(status3)")
     }
     
-    func setupEventTap() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        let isTrusted = AXIsProcessTrustedWithOptions(options)
+    func setupEventTap(promptUser: Bool = true) {
+        if promptUser {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
+        }
+        let isTrusted = AXIsProcessTrusted()
         logMessage("Accessibility trusted status: \(isTrusted)")
         
         let eventMask = (1 << CGEventType.keyDown.rawValue)
@@ -958,11 +957,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             callback: myEventTapCallback,
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         ) else {
-            logMessage("Failed to create event tap - please check Accessibility permissions in System Settings -> Privacy & Security -> Accessibility!")
-            // Retry periodically in case user toggles permission in System Settings
+            // Silently retry every 3 seconds without popup modals
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 if self?.eventTapRef == nil {
-                    self?.setupEventTap()
+                    self?.setupEventTap(promptUser: false)
                 }
             }
             return
