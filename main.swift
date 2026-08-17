@@ -1776,6 +1776,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 }
             }
             return true
+        } else if commandSelector == #selector(NSResponder.deleteBackward(_:)) {
+            // Backspace key: If in folder navigation and ending with "/", jump UP one folder level instantly
+            let current = searchField.stringValue
+            if (current.hasPrefix("~") || current.hasPrefix("/")) && current.hasSuffix("/") {
+                if current == "~/" || current == "/" {
+                    searchField.stringValue = ""
+                    filterItems(query: "")
+                    return true
+                }
+                
+                var parts = current.split(separator: "/", omittingEmptySubsequences: true).map { String($0) }
+                if parts.count > 1 {
+                    parts.removeLast()
+                    let isAbsolute = current.hasPrefix("/")
+                    let newPath = (isAbsolute ? "/" : "") + parts.joined(separator: "/") + "/"
+                    searchField.stringValue = newPath
+                    filterItems(query: newPath)
+                    return true
+                } else if parts.count == 1 && current.hasPrefix("/") {
+                    searchField.stringValue = "/"
+                    filterItems(query: "/")
+                    return true
+                } else {
+                    searchField.stringValue = ""
+                    filterItems(query: "")
+                    return true
+                }
+            }
+            return false
         } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
             hideWindow()
             return true

@@ -24,7 +24,7 @@ cat <<EOF > ClipSnippet.app/Contents/Info.plist
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.0</string>
+    <string>1.3.1</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
@@ -37,4 +37,9 @@ EOF
 # 4. Sign the app bundle ad-hoc to satisfy macOS security requirements
 codesign --force --deep --sign - ClipSnippet.app
 
+# 5. Create release zip
+rm -f ClipSnippet.zip
+zip -r -y -q ClipSnippet.zip ClipSnippet.app
+
 echo "✅ ClipSnippet.app packaged and signed successfully!"
+echo "📦 SHA256: $(shasum -a 256 ClipSnippet.zip | awk '{print $1}')"
