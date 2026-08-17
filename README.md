@@ -22,10 +22,17 @@ brew install --cask clipsnippet
 ### 🚀 Usage
 
 *   **Activate:** Press **`Cmd + Option + C`** (or click the `📋` menu bar icon) to open the search window.
-*   **Search:** The search window opens centered on your screen and is instantly ready for typing. You can search through clipboard history, snippet triggers, snippet categories, or macOS contacts (when typing 2 or more characters).
+*   **Search:** The search window opens centered on your screen and is instantly ready for typing. You can search through:
+    *   **Clipboard history** – Your recently copied items
+    *   **Snippet triggers** – Custom text expansions
+    *   **Snippet categories** – Organized groups
+    *   **System commands** – Quick actions for macOS
+    *   **macOS contacts** – When typing 2 or more characters
 *   **Visual Grouping:** The list is grouped under native section headers:
-    *   `📋 Clipboard History` – Your recently copied items (displayed first).
+    *   `💻 System: <Category>` – macOS system actions (Files, Power, Display, Audio, Apps).
+    *   `📋 Clipboard History` – Your recently copied items.
     *   `⚡️ Snippets: <Category>` – Your custom text expansions grouped by category.
+    *   `👥 Contacts` – Your macOS contacts (requires 2+ characters).
 *   **Insert (Paste):**
     *   Use the arrow keys (Up/Down) to select an item and press **Enter** – the window will hide and the text will be automatically pasted into the active text field.
     *   Press **`Cmd + 1`** through **`Cmd + 9`** to instantly paste the corresponding item from the list (headers are automatically skipped).
@@ -33,6 +40,42 @@ brew install --cask clipsnippet
     *   Select a clipboard history item (`📋`) and press **`Cmd + Delete`**, **`Option + Delete`**, or **`Ctrl + Delete`** to delete it from the history and files instantly without confirmation dialogs.
     *   If the search input field is completely empty, you can also press the plain **`Delete`** (Backspace) key to delete the selected item.
 *   **Close:** Press **Escape** to hide the window without pasting.
+
+### 💻 System Commands
+
+ClipSnippet includes powerful system actions that let you control macOS with keyboard shortcuts:
+
+#### Files & Storage
+*   **Empty Trash** 🗑️ – Permanently delete all items in Trash (requires confirmation)
+*   **Open Trash** 🗑️ – Open Trash in Finder
+*   **Toggle Hidden Files** 👁️ – Show/hide hidden files in Finder
+*   **Eject All Disks** 💾 – Safely eject all mounted disks
+
+#### Power & Session
+*   **Lock Screen** 🔒 – Lock your Mac instantly
+*   **Sleep** 💤 – Put your Mac to sleep
+*   **Restart** 🔄 – Restart your Mac (requires confirmation)
+*   **Shut Down** ⏻ – Shut down your Mac (requires confirmation)
+*   **Log Out** 👤 – Log out current user (requires confirmation)
+
+#### Display & Appearance
+*   **Show Desktop** 🖥️ – Hide all windows and reveal desktop
+*   **Toggle Dark Mode** 🌙 – Switch between light and dark mode
+
+#### Audio
+*   **Toggle Mute** 🔇 – Mute/unmute system audio
+*   **Volume Up** 🔊 – Increase volume by 10%
+*   **Volume Down** 🔉 – Decrease volume by 10%
+
+#### Apps
+*   **Hide All Apps** 📦 – Hide all application windows
+*   **Quit All Apps** ❌ – Quit all running applications (requires confirmation)
+*   **Dismiss Notifications** 🔕 – Clear all notifications
+
+**Usage Tips:**
+*   Type keywords like "lock", "sleep", "trash", "mute", or "dark" to quickly find system commands
+*   System commands appear at the top of search results when relevant
+*   Use `Cmd + 1-9` shortcuts to execute commands instantly
 
 ### ⚙️ Configuration & Snippets
 
@@ -119,10 +162,17 @@ brew install --cask clipsnippet
 ### 🚀 Kasutamine
 
 *   **Käivitamine:** Vajuta klahvikombinatsiooni **`Cmd + Option + C`** (või klõpsa `📋` ikoonil menüüribal), et avada otsinguaken.
-*   **Otsimine:** Otsinguaken avaneb alati ekraani keskel ja on kohe kirjutamiseks valmis. Otsida saab nii kopeeritud tekstide sisust, tekstilaienduste trigeritest, kategooriatest kui ka macOS-i kontaktidest (kui sisestad vähemalt 2 tähte).
+*   **Otsimine:** Otsinguaken avaneb alati ekraani keskel ja on kohe kirjutamiseks valmis. Otsida saab:
+    *   **Lõikelaua ajalugu** – Kopeeritud tekstid
+    *   **Tekstilaienduste trigerid** – Kohandatud laiendused
+    *   **Kategooriad** – Grupeeritud laiendused
+    *   **Süsteemi käsud** – macOS-i kiirtoimingud
+    *   **macOS-i kontaktid** – Kui sisestad vähemalt 2 tähte
 *   **Grupeerimine:** Nimekiri on jagatud visuaalselt kategooriateks:
-    *   `📋 Clipboard History` – Lõikelaua ajalugu (kuvatakse kõige esimesena).
+    *   `💻 System: <Kategooria>` – macOS-i süsteemi toimingud (Failid, Toide, Kuva, Heli, Rakendused).
+    *   `📋 Clipboard History` – Lõikelaua ajalugu.
     *   `⚡️ Snippets: <Kategooria>` – Kasutaja seadistatud laiendused vastavalt JSON-faili jaotustele.
+    *   `👥 Contacts` – macOS-i kontaktid (vajab vähemalt 2 tähte).
 *   **Sisestamine (kleepimine):**
     *   Vali nooleklahvidega (Üles/Alla) rida ja vajuta **Enter** – aken sulgub ning tekst kleebitakse automaatselt aktiivsesse tekstikasti.
     *   Vajuta kiirklahvi **`Cmd + 1`** kuni **`Cmd + 9`**, et kleepida koheselt vastav rida otse nimekirjast (sektsioonide pealkirjad hüpatakse otseteede loendamisel automaatselt üle).
@@ -130,6 +180,42 @@ brew install --cask clipsnippet
     *   Vali noolega ajaloo rida (`📋`) ja vajuta **`Cmd + Delete`**, **`Option + Delete`** või **`Ctrl + Delete`**, et kustutada see element nimekirjast ja failist ilma hoiatusaknata.
     *   Kui otsingukast on täiesti tühi, saab valitud ajaloorea kustutada ka lihtsalt tavalise **`Delete`** (Backspace) klahviga.
 *   **Sulgemine:** Vajuta **Escape**, et otsinguaken peita ilma midagi kleepimata.
+
+### 💻 Süsteemi Käsud (System Commands)
+
+ClipSnippet sisaldab võimsaid süsteemi toiminguid, mis võimaldavad macOS-i kontrollida klaviatuuriga:
+
+#### Failid ja Andmekandjad (Files & Storage)
+*   **Empty Trash** 🗑️ – Tühjenda prügikast lõplikult (nõuab kinnitust)
+*   **Open Trash** 🗑️ – Ava prügikast Finder'is
+*   **Toggle Hidden Files** 👁️ – Näita/peida peidetud failid Finder'is
+*   **Eject All Disks** 💾 – Väljasta kõik ühendatud kettad ohutult
+
+#### Toide ja Sessioon (Power & Session)
+*   **Lock Screen** 🔒 – Lukusta ekraan koheselt
+*   **Sleep** 💤 – Pane Mac puhkerežiimi
+*   **Restart** 🔄 – Taaskäivita Mac (nõuab kinnitust)
+*   **Shut Down** ⏻ – Lülita Mac välja (nõuab kinnitust)
+*   **Log Out** 👤 – Logi kasutaja välja (nõuab kinnitust)
+
+#### Kuva ja Välimus (Display & Appearance)
+*   **Show Desktop** 🖥️ – Peida kõik aknad ja näita töölauda
+*   **Toggle Dark Mode** 🌙 – Vaheta hele ja tumeda režiimi vahel
+
+#### Heli (Audio)
+*   **Toggle Mute** 🔇 – Vaigista/taasta süsteemi heli
+*   **Volume Up** 🔊 – Suurenda helitugevust 10%
+*   **Volume Down** 🔉 – Vähenda helitugevust 10%
+
+#### Rakendused (Apps)
+*   **Hide All Apps** 📦 – Peida kõik rakenduste aknad
+*   **Quit All Apps** ❌ – Sulge kõik käimasolevad rakendused (nõuab kinnitust)
+*   **Dismiss Notifications** 🔕 – Sulge kõik teated
+
+**Kasutusnipid:**
+*   Kirjuta võtmesõnu nagu "lock", "sleep", "trash", "mute" või "dark", et leida kiiresti süsteemi käske
+*   Süsteemi käsud ilmuvad otsingutulemuste ülaossa, kui need on asjakohased
+*   Kasuta `Cmd + 1-9` kiirklahve käskude koheseks käivitamiseks
 
 ---
 

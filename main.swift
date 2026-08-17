@@ -96,11 +96,568 @@ struct ClipItem: Codable {
     let trigger: String?
     let title: String
     let category: String?
+    var systemCommandId: String? = nil // For system commands
+    var filePath: String? = nil // For file & folder navigation
+    var isDirectory: Bool = false // For folder navigation
 }
 
 struct ContactClipItem {
     let item: ClipItem
     let searchString: String
+}
+
+// MARK: - System Commands
+
+enum SystemCommandCategory: String {
+    case files = "Files & Storage"
+    case power = "Power & Session"
+    case display = "Display & Appearance"
+    case audio = "Audio"
+    case apps = "Apps"
+}
+
+struct SystemCommand {
+    let id: String
+    let name: String
+    let icon: String
+    let category: SystemCommandCategory
+    let keywords: [String]
+    let requiresConfirmation: Bool
+    let execute: () -> Void
+    
+    var searchableText: String {
+        return "\(name) \(keywords.joined(separator: " ")) \(category.rawValue)".lowercased()
+    }
+}
+
+class SystemCommands {
+    static let shared = SystemCommands()
+    var allCommands: [SystemCommand] = []
+    
+    private init() {
+        setupCommands()
+    }
+    
+    private func setupCommands() {
+        allCommands = [
+            // Files & Storage
+            SystemCommand(
+                id: "empty_trash",
+                name: "Empty Trash",
+                icon: "🗑️",
+                category: .files,
+                keywords: ["delete", "remove", "clean", "clear", "prügikast", "tühjenda"],
+                requiresConfirmation: true,
+                execute: { self.emptyTrash() }
+            ),
+            SystemCommand(
+                id: "open_trash",
+                name: "Open Trash",
+                icon: "🗑️",
+                category: .files,
+                keywords: ["show", "view", "prügikast", "ava"],
+                requiresConfirmation: false,
+                execute: { self.openTrash() }
+            ),
+            SystemCommand(
+                id: "toggle_hidden_files",
+                name: "Toggle Hidden Files",
+                icon: "👁️",
+                category: .files,
+                keywords: ["show", "hide", "invisible", "dot", "peidetud", "failid"],
+                requiresConfirmation: false,
+                execute: { self.toggleHiddenFiles() }
+            ),
+            SystemCommand(
+                id: "eject_disks",
+                name: "Eject All Disks",
+                icon: "💾",
+                category: .files,
+                keywords: ["unmount", "remove", "usb", "väljasta", "kettad"],
+                requiresConfirmation: false,
+                execute: { self.ejectAllDisks() }
+            ),
+            
+            // Power & Session
+            SystemCommand(
+                id: "lock_screen",
+                name: "Lock Screen",
+                icon: "🔒",
+                category: .power,
+                keywords: ["secure", "away", "lukusta", "ekraan"],
+                requiresConfirmation: false,
+                execute: { self.lockScreen() }
+            ),
+            SystemCommand(
+                id: "sleep",
+                name: "Sleep",
+                icon: "💤",
+                category: .power,
+                keywords: ["suspend", "hibernate", "uni", "puhkerežiim"],
+                requiresConfirmation: false,
+                execute: { self.sleep() }
+            ),
+            SystemCommand(
+                id: "restart",
+                name: "Restart",
+                icon: "🔄",
+                category: .power,
+                keywords: ["reboot", "taaskäivita"],
+                requiresConfirmation: true,
+                execute: { self.restart() }
+            ),
+            SystemCommand(
+                id: "shutdown",
+                name: "Shut Down",
+                icon: "⏻",
+                category: .power,
+                keywords: ["power off", "turn off", "sulge", "lülita välja"],
+                requiresConfirmation: true,
+                execute: { self.shutdown() }
+            ),
+            SystemCommand(
+                id: "logout",
+                name: "Log Out",
+                icon: "👤",
+                category: .power,
+                keywords: ["sign out", "exit", "logi välja"],
+                requiresConfirmation: true,
+                execute: { self.logout() }
+            ),
+            
+            // Display & Appearance
+            SystemCommand(
+                id: "show_desktop",
+                name: "Show Desktop",
+                icon: "🖥️",
+                category: .display,
+                keywords: ["minimize", "hide windows", "näita", "töölaud"],
+                requiresConfirmation: false,
+                execute: { self.showDesktop() }
+            ),
+            SystemCommand(
+                id: "toggle_dark_mode",
+                name: "Toggle Dark Mode",
+                icon: "🌙",
+                category: .display,
+                keywords: ["theme", "appearance", "light", "dark", "tume", "hele"],
+                requiresConfirmation: false,
+                execute: { self.toggleDarkMode() }
+            ),
+            
+            // Audio
+            SystemCommand(
+                id: "toggle_mute",
+                name: "Toggle Mute",
+                icon: "🔇",
+                category: .audio,
+                keywords: ["sound", "volume", "silent", "vaigista", "heli"],
+                requiresConfirmation: false,
+                execute: { self.toggleMute() }
+            ),
+            SystemCommand(
+                id: "volume_up",
+                name: "Volume Up",
+                icon: "🔊",
+                category: .audio,
+                keywords: ["sound", "louder", "increase", "valjemaks", "heli"],
+                requiresConfirmation: false,
+                execute: { self.volumeUp() }
+            ),
+            SystemCommand(
+                id: "volume_down",
+                name: "Volume Down",
+                icon: "🔉",
+                category: .audio,
+                keywords: ["sound", "quieter", "decrease", "vaiksemaks", "heli"],
+                requiresConfirmation: false,
+                execute: { self.volumeDown() }
+            ),
+            
+            // Apps
+            SystemCommand(
+                id: "hide_all_apps",
+                name: "Hide All Apps",
+                icon: "📦",
+                category: .apps,
+                keywords: ["minimize", "clear", "peida", "rakendused"],
+                requiresConfirmation: false,
+                execute: { self.hideAllApps() }
+            ),
+            SystemCommand(
+                id: "quit_all_apps",
+                name: "Quit All Apps",
+                icon: "❌",
+                category: .apps,
+                keywords: ["close", "exit", "sulge", "rakendused"],
+                requiresConfirmation: true,
+                execute: { self.quitAllApps() }
+            ),
+            SystemCommand(
+                id: "dismiss_notifications",
+                name: "Dismiss Notifications",
+                icon: "🔕",
+                category: .apps,
+                keywords: ["clear", "close", "teated", "sulge"],
+                requiresConfirmation: false,
+                execute: { self.dismissNotifications() }
+            )
+        ]
+    }
+    
+    // MARK: - Files & Storage Actions
+    
+    private func emptyTrash() {
+        logMessage("SystemCommand: Empty Trash")
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Empty Trash?"
+            alert.informativeText = "Are you sure you want to permanently delete all items in the Trash? This action cannot be undone."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Empty Trash")
+            alert.addButton(withTitle: "Cancel")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let script = """
+                tell application "Finder"
+                    empty trash
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                    if let error = error {
+                        logMessage("Empty Trash failed: \(error)")
+                    } else {
+                        logMessage("Empty Trash completed successfully")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func openTrash() {
+        logMessage("SystemCommand: Open Trash")
+        let trashURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: trashURL.path)
+    }
+    
+    private func toggleHiddenFiles() {
+        logMessage("SystemCommand: Toggle Hidden Files")
+        let script = """
+        set currentState to do shell script "defaults read com.apple.finder AppleShowAllFiles"
+        if currentState is "1" or currentState is "TRUE" or currentState is "YES" then
+            do shell script "defaults write com.apple.finder AppleShowAllFiles -bool false"
+        else
+            do shell script "defaults write com.apple.finder AppleShowAllFiles -bool true"
+        end if
+        tell application "Finder"
+            quit
+            delay 0.1
+            activate
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Toggle Hidden Files failed: \(error)")
+            }
+        }
+    }
+    
+    private func ejectAllDisks() {
+        logMessage("SystemCommand: Eject All Disks")
+        let script = """
+        tell application "Finder"
+            eject (every disk whose ejectable is true)
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Eject All Disks failed: \(error)")
+            } else {
+                logMessage("Eject All Disks completed successfully")
+            }
+        }
+    }
+    
+    // MARK: - Power & Session Actions
+    
+    private func lockScreen() {
+        logMessage("SystemCommand: Lock Screen")
+        let script = """
+        tell application "System Events"
+            keystroke "q" using {control down, command down}
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Lock Screen failed: \(error)")
+            }
+        }
+    }
+    
+    private func sleep() {
+        logMessage("SystemCommand: Sleep")
+        let script = """
+        tell application "System Events"
+            sleep
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Sleep failed: \(error)")
+            }
+        }
+    }
+    
+    private func restart() {
+        logMessage("SystemCommand: Restart")
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Restart Computer?"
+            alert.informativeText = "Are you sure you want to restart your computer? All unsaved changes will be lost."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Restart")
+            alert.addButton(withTitle: "Cancel")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let script = """
+                tell application "System Events"
+                    restart
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                    if let error = error {
+                        logMessage("Restart failed: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func shutdown() {
+        logMessage("SystemCommand: Shut Down")
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Shut Down Computer?"
+            alert.informativeText = "Are you sure you want to shut down your computer? All unsaved changes will be lost."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Shut Down")
+            alert.addButton(withTitle: "Cancel")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let script = """
+                tell application "System Events"
+                    shut down
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                    if let error = error {
+                        logMessage("Shut Down failed: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func logout() {
+        logMessage("SystemCommand: Log Out")
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Log Out?"
+            alert.informativeText = "Are you sure you want to log out? All unsaved changes will be lost."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Log Out")
+            alert.addButton(withTitle: "Cancel")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let script = """
+                tell application "System Events"
+                    log out
+                end tell
+                """
+                if let appleScript = NSAppleScript(source: script) {
+                    var error: NSDictionary?
+                    appleScript.executeAndReturnError(&error)
+                    if let error = error {
+                        logMessage("Log Out failed: \(error)")
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Display & Appearance Actions
+    
+    private func showDesktop() {
+        logMessage("SystemCommand: Show Desktop")
+        let script = """
+        tell application "System Events"
+            key code 103 using {command down, function down}
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Show Desktop failed: \(error)")
+            }
+        }
+    }
+    
+    private func toggleDarkMode() {
+        logMessage("SystemCommand: Toggle Dark Mode")
+        let script = """
+        tell application "System Events"
+            tell appearance preferences
+                set dark mode to not dark mode
+            end tell
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Toggle Dark Mode failed: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Audio Actions
+    
+    private func toggleMute() {
+        logMessage("SystemCommand: Toggle Mute")
+        let script = """
+        set currentVolume to output volume of (get volume settings)
+        if output muted of (get volume settings) then
+            set volume output muted false
+        else
+            set volume output muted true
+        end if
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Toggle Mute failed: \(error)")
+            }
+        }
+    }
+    
+    private func volumeUp() {
+        logMessage("SystemCommand: Volume Up")
+        let script = """
+        set currentVolume to output volume of (get volume settings)
+        if currentVolume < 100 then
+            set volume output volume (currentVolume + 10)
+        end if
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Volume Up failed: \(error)")
+            }
+        }
+    }
+    
+    private func volumeDown() {
+        logMessage("SystemCommand: Volume Down")
+        let script = """
+        set currentVolume to output volume of (get volume settings)
+        if currentVolume > 0 then
+            set volume output volume (currentVolume - 10)
+        end if
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Volume Down failed: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Apps Actions
+    
+    private func hideAllApps() {
+        logMessage("SystemCommand: Hide All Apps")
+        let script = """
+        tell application "System Events"
+            set visible of every process whose visible is true and name is not "Finder" to false
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Hide All Apps failed: \(error)")
+            }
+        }
+    }
+    
+    private func quitAllApps() {
+        logMessage("SystemCommand: Quit All Apps")
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Quit All Applications?"
+            alert.informativeText = "Are you sure you want to quit all running applications? Unsaved work may be lost."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Quit All")
+            alert.addButton(withTitle: "Cancel")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let excludedApps = ["Finder", "ClipSnippet"]
+                let runningApps = NSWorkspace.shared.runningApplications
+                
+                for app in runningApps {
+                    if let appName = app.localizedName,
+                       !excludedApps.contains(appName),
+                       app.activationPolicy == .regular {
+                        app.terminate()
+                    }
+                }
+                logMessage("Quit All Apps completed")
+            }
+        }
+    }
+    
+    private func dismissNotifications() {
+        logMessage("SystemCommand: Dismiss Notifications")
+        let script = """
+        tell application "System Events"
+            tell process "NotificationCenter"
+                try
+                    click button 1 of every window
+                end try
+            end tell
+        end tell
+        """
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                logMessage("Dismiss Notifications failed: \(error)")
+            }
+        }
+    }
 }
 
 class BorderlessWindow: NSPanel {
@@ -575,17 +1132,146 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
     }
     
+    func fetchFileSystemItems(query: String) -> [TableRow] {
+        var rawPath = query
+        if rawPath.hasPrefix("~") {
+            rawPath = NSHomeDirectory() + rawPath.dropFirst()
+        }
+        
+        var targetDir = rawPath
+        var filterPrefix = ""
+        
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: rawPath, isDirectory: &isDir) {
+            if !isDir.boolValue {
+                // Exact file match
+                let fileName = URL(fileURLWithPath: rawPath).lastPathComponent
+                return [
+                    .header(title: "📄 Fail"),
+                    .item(ClipItem(
+                        text: rawPath,
+                        isSnippet: false,
+                        trigger: nil,
+                        title: "📄 \(fileName)",
+                        category: "Files",
+                        systemCommandId: nil,
+                        filePath: rawPath,
+                        isDirectory: false
+                    ))
+                ]
+            } else {
+                targetDir = rawPath
+                filterPrefix = ""
+            }
+        } else {
+            let url = URL(fileURLWithPath: rawPath)
+            targetDir = url.deletingLastPathComponent().path
+            filterPrefix = url.lastPathComponent.lowercased()
+        }
+        
+        guard FileManager.default.fileExists(atPath: targetDir) else { return [] }
+        
+        do {
+            let contents = try FileManager.default.contentsOfDirectory(atPath: targetDir)
+            let filtered = contents.filter { name in
+                if name.hasPrefix(".") && !filterPrefix.hasPrefix(".") { return false }
+                if filterPrefix.isEmpty { return true }
+                return name.lowercased().contains(filterPrefix)
+            }.sorted { (a, b) -> Bool in
+                let aPath = (targetDir as NSString).appendingPathComponent(a)
+                let bPath = (targetDir as NSString).appendingPathComponent(b)
+                var aIsDir: ObjCBool = false
+                var bIsDir: ObjCBool = false
+                FileManager.default.fileExists(atPath: aPath, isDirectory: &aIsDir)
+                FileManager.default.fileExists(atPath: bPath, isDirectory: &bIsDir)
+                if aIsDir.boolValue != bIsDir.boolValue {
+                    return aIsDir.boolValue
+                }
+                return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+            }
+            
+            var rows: [TableRow] = []
+            let displayDir = targetDir.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+            rows.append(.header(title: "📁 Kaust: \(displayDir)"))
+            
+            for name in filtered.prefix(50) {
+                let itemPath = (targetDir as NSString).appendingPathComponent(name)
+                var isItemDir: ObjCBool = false
+                FileManager.default.fileExists(atPath: itemPath, isDirectory: &isItemDir)
+                
+                let icon = isItemDir.boolValue ? "📁" : "📄"
+                let title = "\(icon) \(name)"
+                
+                rows.append(.item(ClipItem(
+                    text: itemPath,
+                    isSnippet: false,
+                    trigger: nil,
+                    title: title,
+                    category: "Files",
+                    systemCommandId: nil,
+                    filePath: itemPath,
+                    isDirectory: isItemDir.boolValue
+                )))
+            }
+            return rows
+        } catch {
+            return []
+        }
+    }
+    
     func filterItems(query: String) {
         var newRows: [TableRow] = []
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
         
-        // 1. Process clipboard history (now first)
+        // 1. File & Folder Navigation Mode (starts with ~ or /)
+        if trimmed.hasPrefix("~") || trimmed.hasPrefix("/") {
+            let fsRows = fetchFileSystemItems(query: trimmed)
+            if !fsRows.isEmpty {
+                filteredRows = fsRows
+                tableView.reloadData()
+                if let firstSelectable = filteredRows.firstIndex(where: {
+                    if case .item = $0 { return true }
+                    return false
+                }) {
+                    tableView.selectRowIndexes(IndexSet(integer: firstSelectable), byExtendingSelection: false)
+                    tableView.scrollRowToVisible(firstSelectable)
+                }
+                return
+            }
+        }
+        
+        // 2. Process System Commands (ONLY when user explicitly types a keyword, NOT when empty!)
+        if !trimmed.isEmpty {
+            let matchingCommands = SystemCommands.shared.allCommands.filter { command in
+                command.searchableText.contains(trimmed.lowercased())
+            }
+            
+            if !matchingCommands.isEmpty {
+                newRows.append(.header(title: "⚡️ Süsteemikäsud (System Actions)"))
+                for command in matchingCommands {
+                    let item = ClipItem(
+                        text: command.name,
+                        isSnippet: false,
+                        trigger: nil,
+                        title: "\(command.icon) \(command.name)",
+                        category: "System",
+                        systemCommandId: command.id,
+                        filePath: nil,
+                        isDirectory: false
+                    )
+                    newRows.append(.item(item))
+                }
+            }
+        }
+        
+        // 3. Process clipboard history (ALWAYS AT THE TOP when query is empty!)
         let matchingHistory: [ClipItem]
-        if query.isEmpty {
-            matchingHistory = clipboardHistory.map { ClipItem(text: $0, isSnippet: false, trigger: nil, title: $0, category: nil) }
+        if trimmed.isEmpty {
+            matchingHistory = clipboardHistory.map { ClipItem(text: $0, isSnippet: false, trigger: nil, title: $0, category: nil, systemCommandId: nil, filePath: nil, isDirectory: false) }
         } else {
             matchingHistory = clipboardHistory
-                .filter { $0.localizedCaseInsensitiveContains(query) }
-                .map { ClipItem(text: $0, isSnippet: false, trigger: nil, title: $0, category: nil) }
+                .filter { $0.localizedCaseInsensitiveContains(trimmed) }
+                .map { ClipItem(text: $0, isSnippet: false, trigger: nil, title: $0, category: nil, systemCommandId: nil, filePath: nil, isDirectory: false) }
         }
         
         if !matchingHistory.isEmpty {
@@ -595,7 +1281,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
         }
         
-        // 2. Process custom snippets by category
+        // 4. Process custom snippets by category
         let sortedCategories = customSnippets.keys.sorted()
         for category in sortedCategories {
             if let snippets = customSnippets[category] {
@@ -605,12 +1291,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 for trigger in sortedTriggers {
                     if let text = snippets[trigger] {
                         let title = text
-                        let matchText = title.localizedCaseInsensitiveContains(query)
-                        let matchTrigger = trigger.localizedCaseInsensitiveContains(query)
-                        let matchCategory = category.localizedCaseInsensitiveContains(query)
+                        let matchText = title.localizedCaseInsensitiveContains(trimmed)
+                        let matchTrigger = trigger.localizedCaseInsensitiveContains(trimmed)
+                        let matchCategory = category.localizedCaseInsensitiveContains(trimmed)
                         
-                        if query.isEmpty || matchText || matchTrigger || matchCategory {
-                            matchingSnippets.append(ClipItem(text: text, isSnippet: true, trigger: trigger, title: title, category: category))
+                        if trimmed.isEmpty || matchText || matchTrigger || matchCategory {
+                            matchingSnippets.append(ClipItem(text: text, isSnippet: true, trigger: trigger, title: title, category: category, systemCommandId: nil, filePath: nil, isDirectory: false))
                         }
                     }
                 }
@@ -624,9 +1310,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
         }
         
-        // 3. Process contacts (query must be at least 2 characters)
-        if query.count >= 2 {
-            let matchingContacts = fetchContacts(query: query)
+        // 5. Process contacts (query must be at least 2 characters)
+        if trimmed.count >= 2 {
+            let matchingContacts = fetchContacts(query: trimmed)
             if !matchingContacts.isEmpty {
                 newRows.append(.header(title: "👥 Contacts"))
                 for item in matchingContacts {
@@ -901,6 +1587,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         guard index >= 0 && index < filteredRows.count else { return }
         guard case .item(let item) = filteredRows[index] else { return }
         
+        // 1. Check if this is a file system item
+        if let filePath = item.filePath {
+            if item.isDirectory {
+                // Drill down into folder
+                let newPath = filePath.hasSuffix("/") ? filePath : filePath + "/"
+                let displayPath = newPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+                searchField.stringValue = displayPath
+                filterItems(query: displayPath)
+                return
+            } else {
+                // Open file with default application
+                hideWindow()
+                NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
+                return
+            }
+        }
+        
+        // 2. Check if this is a system command
+        if let commandId = item.systemCommandId {
+            hideWindow()
+            if let command = SystemCommands.shared.allCommands.first(where: { $0.id == commandId }) {
+                logMessage("Executing system command: \(command.name)")
+                command.execute()
+            }
+            return
+        }
+        
         var textToPaste = item.text
         
         // Dynamic snippet evaluation
@@ -1023,6 +1736,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             let selectedRow = tableView.selectedRow
             if selectedRow >= 0 {
                 selectAndPaste(index: selectedRow)
+            }
+            return true
+        } else if commandSelector == #selector(NSResponder.insertTab(_:)) {
+            // Tab key: If current item is a directory or path item, drill down into it!
+            let selectedRow = tableView.selectedRow
+            if selectedRow >= 0 && selectedRow < filteredRows.count {
+                if case .item(let item) = filteredRows[selectedRow] {
+                    if let filePath = item.filePath, item.isDirectory {
+                        let newPath = filePath.hasSuffix("/") ? filePath : filePath + "/"
+                        let displayPath = newPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+                        searchField.stringValue = displayPath
+                        filterItems(query: displayPath)
+                        return true
+                    }
+                }
             }
             return true
         } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {

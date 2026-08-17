@@ -24,7 +24,7 @@ cat <<EOF > ClipSnippet.app/Contents/Info.plist
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.2.0</string>
+    <string>1.3.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
