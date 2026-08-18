@@ -316,38 +316,81 @@ class SystemCommands {
         ]
     }
     
+    // MARK: - Helper Methods
+    
+    @discardableResult
+    func runAppleScript(_ script: String) -> Bool {
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            appleScript.executeAndReturnError(&error)
+            if error == nil {
+                return true
+            }
+            logMessage("NSAppleScript execution note: \(String(describing: error)), falling back to osascript process...")
+        }
+        
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        let pipe = Pipe()
+        process.standardError = pipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                logMessage("osascript process execution succeeded")
+                return true
+            } else {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let errStr = String(data: data, encoding: .utf8) ?? ""
+                logMessage("osascript process failed with code \(process.terminationStatus): \(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
+                return false
+            }
+        } catch {
+            logMessage("Failed to spawn osascript process: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
     // MARK: - Files & Storage Actions
     
     private func emptyTrash() {
-        logMessage("SystemCommand: Empty Trash (Instant & Silent)")
+        logMessage("SystemCommand: Empty Trash")
         DispatchQueue.global(qos: .userInitiated).async {
-            let trashPath = NSHomeDirectory() + "/.Trash"
-            if let items = try? FileManager.default.contentsOfDirectory(atPath: trashPath) {
-                for item in items {
-                    let itemURL = URL(fileURLWithPath: trashPath).appendingPathComponent(item)
-                    try? FileManager.default.removeItem(at: itemURL)
-                }
-            }
-            
-            let script = """
+            // 1. Tell Finder to empty trash (standard macOS way)
+            let finderScript = """
             tell application "Finder"
-                ignoring application responses
-                    empty trash
-                end ignoring
+                empty trash
             end tell
             """
-            if let appleScript = NSAppleScript(source: script) {
-                var error: NSDictionary?
-                appleScript.executeAndReturnError(&error)
+            let success = self.runAppleScript(finderScript)
+            
+            // 2. Also remove file locks and delete directly via shell process
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", "chflags -R nouchg ~/.Trash/* ~/.Trash/.* 2>/dev/null; rm -rf ~/.Trash/* ~/.Trash/.* 2>/dev/null"]
+            try? process.run()
+            process.waitUntilExit()
+            
+            DispatchQueue.main.async {
+                NSSound(named: "Purr")?.play()
             }
-            logMessage("Empty Trash completed instantly and silently.")
+            logMessage("Empty Trash completed (Finder AppleScript success: \(success))")
         }
     }
     
     private func openTrash() {
         logMessage("SystemCommand: Open Trash")
-        let trashURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
-        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: trashURL.path)
+        let script = """
+        tell application "Finder"
+            open trash
+            activate
+        end tell
+        """
+        if !self.runAppleScript(script) {
+            let trashURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
+            NSWorkspace.shared.open(trashURL)
+        }
     }
     
     private func toggleHiddenFiles() {
@@ -365,12 +408,12 @@ class SystemCommands {
             activate
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Toggle Hidden Files failed: \(error)")
-            }
+        if !self.runAppleScript(script) {
+            // Shell fallback
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", "if [ \"$(defaults read com.apple.finder AppleShowAllFiles 2>/dev/null)\" = \"true\" ]; then defaults write com.apple.finder AppleShowAllFiles -bool false; else defaults write com.apple.finder AppleShowAllFiles -bool true; fi; killall Finder"]
+            try? process.run()
         }
     }
     
@@ -381,15 +424,7 @@ class SystemCommands {
             eject (every disk whose ejectable is true)
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Eject All Disks failed: \(error)")
-            } else {
-                logMessage("Eject All Disks completed successfully")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     // MARK: - Power & Session Actions
@@ -401,12 +436,11 @@ class SystemCommands {
             keystroke "q" using {control down, command down}
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Lock Screen failed: \(error)")
-            }
+        if !self.runAppleScript(script) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+            process.arguments = ["displaysleepnow"]
+            try? process.run()
         }
     }
     
@@ -417,12 +451,11 @@ class SystemCommands {
             sleep
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Sleep failed: \(error)")
-            }
+        if !self.runAppleScript(script) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+            process.arguments = ["sleepnow"]
+            try? process.run()
         }
     }
     
@@ -443,13 +476,7 @@ class SystemCommands {
                     restart
                 end tell
                 """
-                if let appleScript = NSAppleScript(source: script) {
-                    var error: NSDictionary?
-                    appleScript.executeAndReturnError(&error)
-                    if let error = error {
-                        logMessage("Restart failed: \(error)")
-                    }
-                }
+                self.runAppleScript(script)
             }
         }
     }
@@ -471,13 +498,7 @@ class SystemCommands {
                     shut down
                 end tell
                 """
-                if let appleScript = NSAppleScript(source: script) {
-                    var error: NSDictionary?
-                    appleScript.executeAndReturnError(&error)
-                    if let error = error {
-                        logMessage("Shut Down failed: \(error)")
-                    }
-                }
+                self.runAppleScript(script)
             }
         }
     }
@@ -499,13 +520,7 @@ class SystemCommands {
                     log out
                 end tell
                 """
-                if let appleScript = NSAppleScript(source: script) {
-                    var error: NSDictionary?
-                    appleScript.executeAndReturnError(&error)
-                    if let error = error {
-                        logMessage("Log Out failed: \(error)")
-                    }
-                }
+                self.runAppleScript(script)
             }
         }
     }
@@ -519,13 +534,7 @@ class SystemCommands {
             key code 103 using {command down, function down}
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Show Desktop failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     private func toggleDarkMode() {
@@ -537,13 +546,7 @@ class SystemCommands {
             end tell
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Toggle Dark Mode failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     // MARK: - Audio Actions
@@ -558,13 +561,7 @@ class SystemCommands {
             set volume output muted true
         end if
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Toggle Mute failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     private func volumeUp() {
@@ -575,13 +572,7 @@ class SystemCommands {
             set volume output volume (currentVolume + 10)
         end if
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Volume Up failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     private func volumeDown() {
@@ -592,13 +583,7 @@ class SystemCommands {
             set volume output volume (currentVolume - 10)
         end if
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Volume Down failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     // MARK: - Apps Actions
@@ -610,13 +595,7 @@ class SystemCommands {
             set visible of every process whose visible is true and name is not "Finder" to false
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Hide All Apps failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
     
     private func quitAllApps() {
@@ -657,13 +636,7 @@ class SystemCommands {
             end tell
         end tell
         """
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                logMessage("Dismiss Notifications failed: \(error)")
-            }
-        }
+        self.runAppleScript(script)
     }
 }
 
@@ -1005,15 +978,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         window.orderFrontRegardless()
         
         // Modern application activation
-        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
         NSApp.activate(ignoringOtherApps: true)
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
         
         // Make window key and front
         window.makeKeyAndOrderFront(nil)
         
         DispatchQueue.main.async {
-            NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
             NSApp.activate(ignoringOtherApps: true)
+            NSRunningApplication.current.activate(options: [.activateAllWindows])
             self.window.orderFrontRegardless()
             self.window.makeKeyAndOrderFront(nil)
             self.window.makeFirstResponder(self.searchField)

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+echo "🔨 Compiling ClipSnippet..."
+swiftc -O main.swift -o ClipSnippet
+
 echo "📦 Packaging ClipSnippet.app..."
 
 # 1. Create directory structure
@@ -24,13 +27,17 @@ cat <<EOF > ClipSnippet.app/Contents/Info.plist
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.1</string>
+    <string>1.3.2</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>NSContactsUsageDescription</key>
     <string>ClipSnippet vajab ligipääsu kontaktidele, et otsida ja kopeerida telefoninumbreid ning e-posti aadresse.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>ClipSnippet vajab luba Finderi ja süsteemitoimingute juhtimiseks (nt prügikasti tühjendamine ja akende haldus).</string>
+    <key>NSSystemAdministrationUsageDescription</key>
+    <string>ClipSnippet vajab õigusi süsteemikäskude täitmiseks.</string>
 </dict>
 </plist>
 EOF
