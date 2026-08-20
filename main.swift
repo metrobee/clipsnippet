@@ -7,7 +7,7 @@ let kVK_ANSI_C: UInt32 = 0x08
 let cmdKey = 0x0100
 let optionKey = 0x0800
 let kEventClassKeyboard = 0x6b657962 // 'keyb'
-let kEventHotKeyPressed = 5 // Correct value from Carbon (was 1)
+let kEventHotKeyPressed = 5 // Correct value from Carbon
 
 func logMessage(_ msg: String) {
     let logFile = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".clipsnippet_log.txt")
@@ -26,6 +26,7 @@ func logMessage(_ msg: String) {
         }
     }
 }
+
 func hotKeyHandler(nextHandler: EventHandlerCallRef?, theEvent: EventRef?, userData: UnsafeMutableRawPointer?) -> OSStatus {
     logMessage("Hotkey handler triggered globally!")
     DispatchQueue.main.async {
@@ -50,7 +51,6 @@ func myEventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEven
     
     if type == .keyDown {
         // If our app is currently active (search window open), bypass text expansion
-        // so that typing inside ClipSnippet is not intercepted and doesn't pollute the trigger buffer.
         if NSApp.isActive {
             typedBuffer = ""
             return Unmanaged.passUnretained(event)
@@ -101,6 +101,20 @@ func myEventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEven
     return Unmanaged.passUnretained(event)
 }
 
+// History item storage model (supports text & images)
+struct HistoryItem: Codable {
+    let id: String
+    let text: String?
+    let imagePath: String?
+    let imageWidth: Int?
+    let imageHeight: Int?
+    let timestamp: Date
+    
+    var isImage: Bool {
+        return imagePath != nil
+    }
+}
+
 struct ClipItem: Codable {
     let text: String
     let isSnippet: Bool
@@ -110,6 +124,11 @@ struct ClipItem: Codable {
     var systemCommandId: String? = nil // For system commands
     var filePath: String? = nil // For file & folder navigation
     var isDirectory: Bool = false // For folder navigation
+    var isImage: Bool = false // For image items
+    var imagePath: String? = nil
+    var imageWidth: Int? = nil
+    var imageHeight: Int? = nil
+    var historyId: String? = nil
 }
 
 struct ContactClipItem {
@@ -338,7 +357,6 @@ class SystemCommands {
             try process.run()
             process.waitUntilExit()
             if process.terminationStatus == 0 {
-                logMessage("osascript process execution succeeded")
                 return true
             } else {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -357,7 +375,6 @@ class SystemCommands {
     private func emptyTrash() {
         logMessage("SystemCommand: Empty Trash")
         DispatchQueue.global(qos: .userInitiated).async {
-            // 1. Tell Finder to empty trash (standard macOS way)
             let finderScript = """
             tell application "Finder"
                 empty trash
@@ -365,7 +382,6 @@ class SystemCommands {
             """
             let success = self.runAppleScript(finderScript)
             
-            // 2. Also remove file locks and delete directly via shell process
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
             process.arguments = ["-c", "chflags -R nouchg ~/.Trash/* ~/.Trash/.* 2>/dev/null; rm -rf ~/.Trash/* ~/.Trash/.* 2>/dev/null"]
@@ -409,7 +425,6 @@ class SystemCommands {
         end tell
         """
         if !self.runAppleScript(script) {
-            // Shell fallback
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
             process.arguments = ["-c", "if [ \"$(defaults read com.apple.finder AppleShowAllFiles 2>/dev/null)\" = \"true\" ]; then defaults write com.apple.finder AppleShowAllFiles -bool false; else defaults write com.apple.finder AppleShowAllFiles -bool true; fi; killall Finder"]
@@ -690,12 +705,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var scrollView: NSScrollView!
     var statusItem: NSStatusItem!
     
+    // Split View & Rich Preview Pane
+    var listContainerView: NSView!
+    var dividerView: NSBox!
+    var previewContainerView: NSView!
+    var previewBadgeLabel: NSTextField!
+    var previewMetaLabel: NSTextField!
+    var previewScrollView: NSScrollView!
+    var previewTextView: NSTextView!
+    var previewImageView: NSImageView!
+    var previewFooterLabel: NSTextField!
+    
     var hotKeyRef1: EventHotKeyRef?
     var hotKeyRef2: EventHotKeyRef?
     var hotKeyRef3: EventHotKeyRef?
     var eventHandlerRef: EventHandlerRef?
     var lastChangeCount = 0
-    var clipboardHistory: [String] = []
+    var historyItems: [HistoryItem] = []
     var customSnippets: [String: [String: String]] = [:]
     var fileMonitorSource: DispatchSourceFileSystemObject?
     var allContactsCache: [ContactClipItem] = []
@@ -711,9 +737,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     
     let historyFile = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".clipsnippet_history.json")
     let snippetsFile = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".clipsnippet_snippets.json")
+    let imagesDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".clipsnippet_images")
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        
+        // Ensure image directory exists
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true)
         
         // Load data
         loadSnippets()
@@ -768,7 +798,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
         
         let menu = NSMenu()
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
         let versionItem = NSMenuItem(title: "ClipSnippet v\(version)", action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
         menu.addItem(versionItem)
@@ -782,16 +812,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = menu
     }
-
     
     func setupWindow() {
-        let width: CGFloat = 600
-        let height: CGFloat = 400
+        let width: CGFloat = 860
+        let height: CGFloat = 460
         
         let screenRect = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
         let rect = CGRect(
             x: (screenRect.width - width) / 2,
-            y: (screenRect.height - height) / 2 + 100,
+            y: (screenRect.height - height) / 2 + 60,
             width: width,
             height: height
         )
@@ -818,22 +847,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         visualEffectView.layer?.masksToBounds = true
         window.contentView = visualEffectView
         
-        // Search text field
+        // --- 1. Left Column (Search + List) ---
+        listContainerView = NSView()
+        listContainerView.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(listContainerView)
+        
         searchField = NSTextField()
         searchField.isBezeled = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
-        searchField.font = NSFont.systemFont(ofSize: 18)
-        searchField.placeholderString = "Type to search history, snippets & contacts..."
+        searchField.font = NSFont.systemFont(ofSize: 16, weight: .medium)
+        searchField.placeholderString = "Search history, snippets & contacts..."
         searchField.delegate = self
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        listContainerView.addSubview(searchField)
         
-        // Table view scroll view
         scrollView = NSScrollView()
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        listContainerView.addSubview(scrollView)
         
-        // Table view setup
         tableView = NSTableView()
         tableView.headerView = nil
         tableView.backgroundColor = .clear
@@ -844,12 +879,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         tableView.doubleAction = #selector(tableDoubleClicked)
         
         let col1 = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("text"))
-        col1.width = width - 130
+        col1.width = 340
         col1.resizingMask = [.autoresizingMask]
         tableView.addTableColumn(col1)
         
         let col2 = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("shortcut"))
-        col2.width = 60
+        col2.width = 50
         col2.resizingMask = []
         if let cell = col2.dataCell as? NSCell {
             cell.alignment = .center
@@ -858,23 +893,125 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         
         scrollView.documentView = tableView
         
-        // Layout using Auto Layout
-        searchField.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        // --- 2. Vertical Divider ---
+        dividerView = NSBox()
+        dividerView.boxType = .separator
+        dividerView.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(dividerView)
         
-        visualEffectView.addSubview(searchField)
-        visualEffectView.addSubview(scrollView)
+        // --- 3. Right Column (Rich Side Panel Preview) ---
+        previewContainerView = NSView()
+        previewContainerView.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(previewContainerView)
         
+        previewBadgeLabel = NSTextField(labelWithString: "Eelvaade")
+        previewBadgeLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        previewBadgeLabel.textColor = NSColor.secondaryLabelColor
+        previewBadgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewContainerView.addSubview(previewBadgeLabel)
+        
+        previewMetaLabel = NSTextField(labelWithString: "")
+        previewMetaLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        previewMetaLabel.textColor = NSColor.tertiaryLabelColor
+        previewMetaLabel.alignment = .right
+        previewMetaLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewContainerView.addSubview(previewMetaLabel)
+        
+        // Scrollable Text Preview
+        previewScrollView = NSScrollView()
+        previewScrollView.drawsBackground = false
+        previewScrollView.hasVerticalScroller = true
+        previewScrollView.hasHorizontalScroller = false
+        previewScrollView.autohidesScrollers = true
+        previewScrollView.translatesAutoresizingMaskIntoConstraints = false
+        previewContainerView.addSubview(previewScrollView)
+        
+        previewTextView = NSTextView()
+        previewTextView.isEditable = false
+        previewTextView.isSelectable = true
+        previewTextView.drawsBackground = false
+        previewTextView.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        previewTextView.textColor = NSColor.labelColor
+        previewTextView.textContainer?.lineFragmentPadding = 6
+        previewTextView.textContainer?.widthTracksTextView = true
+        previewScrollView.documentView = previewTextView
+        
+        // Image Preview
+        previewImageView = NSImageView()
+        previewImageView.imageScaling = .scaleProportionallyUpOrDown
+        previewImageView.imageAlignment = .alignCenter
+        previewImageView.wantsLayer = true
+        previewImageView.layer?.cornerRadius = 8
+        previewImageView.layer?.masksToBounds = true
+        previewImageView.layer?.borderWidth = 1
+        previewImageView.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.25).cgColor
+        previewImageView.isHidden = true
+        previewImageView.translatesAutoresizingMaskIntoConstraints = false
+        previewContainerView.addSubview(previewImageView)
+        
+        // Footer shortcut hints
+        previewFooterLabel = NSTextField(labelWithString: "⏎ Kleebi  •  ⌘1..9 Vali  •  ⌫ Kustuta  •  ⎋ Sulge")
+        previewFooterLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        previewFooterLabel.textColor = NSColor.secondaryLabelColor
+        previewFooterLabel.alignment = .center
+        previewFooterLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewContainerView.addSubview(previewFooterLabel)
+        
+        // Auto Layout Setup
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 16),
-            searchField.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 16),
-            searchField.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -16),
+            // Left Container
+            listContainerView.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 14),
+            listContainerView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 16),
+            listContainerView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -14),
+            listContainerView.widthAnchor.constraint(equalToConstant: 420),
+            
+            // Search inside Left
+            searchField.topAnchor.constraint(equalTo: listContainerView.topAnchor),
+            searchField.leadingAnchor.constraint(equalTo: listContainerView.leadingAnchor),
+            searchField.trailingAnchor.constraint(equalTo: listContainerView.trailingAnchor),
             searchField.heightAnchor.constraint(equalToConstant: 28),
             
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 12),
-            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 16),
-            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -16),
-            scrollView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -16)
+            // ScrollView inside Left
+            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 10),
+            scrollView.leadingAnchor.constraint(equalTo: listContainerView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: listContainerView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: listContainerView.bottomAnchor),
+            
+            // Vertical Divider
+            dividerView.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 12),
+            dividerView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -12),
+            dividerView.leadingAnchor.constraint(equalTo: listContainerView.trailingAnchor, constant: 14),
+            dividerView.widthAnchor.constraint(equalToConstant: 1),
+            
+            // Right Container (Preview)
+            previewContainerView.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 14),
+            previewContainerView.leadingAnchor.constraint(equalTo: dividerView.trailingAnchor, constant: 14),
+            previewContainerView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -16),
+            previewContainerView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -14),
+            
+            // Top Preview Header
+            previewBadgeLabel.topAnchor.constraint(equalTo: previewContainerView.topAnchor, constant: 4),
+            previewBadgeLabel.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            
+            previewMetaLabel.centerYAnchor.constraint(equalTo: previewBadgeLabel.centerYAnchor),
+            previewMetaLabel.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
+            previewMetaLabel.leadingAnchor.constraint(greaterThanOrEqualTo: previewBadgeLabel.trailingAnchor, constant: 8),
+            
+            // Content Area (Text & Image fill same region)
+            previewScrollView.topAnchor.constraint(equalTo: previewBadgeLabel.bottomAnchor, constant: 10),
+            previewScrollView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            previewScrollView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
+            previewScrollView.bottomAnchor.constraint(equalTo: previewFooterLabel.topAnchor, constant: -10),
+            
+            previewImageView.topAnchor.constraint(equalTo: previewBadgeLabel.bottomAnchor, constant: 10),
+            previewImageView.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            previewImageView.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
+            previewImageView.bottomAnchor.constraint(equalTo: previewFooterLabel.topAnchor, constant: -10),
+            
+            // Footer
+            previewFooterLabel.leadingAnchor.constraint(equalTo: previewContainerView.leadingAnchor),
+            previewFooterLabel.trailingAnchor.constraint(equalTo: previewContainerView.trailingAnchor),
+            previewFooterLabel.bottomAnchor.constraint(equalTo: previewContainerView.bottomAnchor)
         ])
     }
     
@@ -930,7 +1067,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             callback: myEventTapCallback,
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         ) else {
-            // Silently retry every 3 seconds without popup modals
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 if self?.eventTapRef == nil {
                     self?.setupEventTap(promptUser: false)
@@ -956,13 +1092,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     }
     
     func showWindow() {
-        // Center window on screen where cursor is
         if let mouseLocation = NSScreen.main?.frame {
             let width = window.frame.width
             let height = window.frame.height
             window.setFrame(CGRect(
                 x: (mouseLocation.width - width) / 2,
-                y: (mouseLocation.height - height) / 2 + 100,
+                y: (mouseLocation.height - height) / 2 + 60,
                 width: width,
                 height: height
             ), display: true)
@@ -974,14 +1109,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         searchField.stringValue = ""
         filterItems(query: "")
         
-        // Order front regardless to bypass any window level or accessory activation restrictions
         window.orderFrontRegardless()
-        
-        // Modern application activation
         NSApp.activate(ignoringOtherApps: true)
         NSRunningApplication.current.activate(options: [.activateAllWindows])
-        
-        // Make window key and front
         window.makeKeyAndOrderFront(nil)
         
         DispatchQueue.main.async {
@@ -990,6 +1120,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             self.window.orderFrontRegardless()
             self.window.makeKeyAndOrderFront(nil)
             self.window.makeFirstResponder(self.searchField)
+            self.updatePreviewPane()
         }
     }
     
@@ -1003,59 +1134,125 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     }
     
     // ----------------------------------------------------
-    // Clipboard Logic
+    // Clipboard Monitoring & History Management
     // ----------------------------------------------------
     func checkClipboard() {
         let pasteboard = NSPasteboard.general
         if pasteboard.changeCount != lastChangeCount {
             lastChangeCount = pasteboard.changeCount
+            
+            // 1. Check for image data in pasteboard
+            let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.png"), NSPasteboard.PasteboardType("public.jpeg")]
+            if let types = pasteboard.types, types.contains(where: { imageTypes.contains($0) }) {
+                if let imgData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff) {
+                    if let image = NSImage(data: imgData) {
+                        let w = Int(image.size.width)
+                        let h = Int(image.size.height)
+                        if w > 0 && h > 0 {
+                            addImageHistoryItem(imgData: imgData, width: w, height: h)
+                            return
+                        }
+                    }
+                }
+            }
+            
+            // 2. Check for text in pasteboard
             if let str = pasteboard.string(forType: .string) {
                 let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    addHistoryItem(trimmed)
+                    addTextHistoryItem(trimmed)
                 }
             }
         }
     }
     
-    func addHistoryItem(_ text: String) {
-        // Avoid duplicate consecutive items
-        if let first = clipboardHistory.first, first == text {
+    func addTextHistoryItem(_ text: String) {
+        if let first = historyItems.first, first.text == text {
             return
         }
         
-        // Remove existing to move to top
-        if let idx = clipboardHistory.firstIndex(of: text) {
-            clipboardHistory.remove(at: idx)
+        if let idx = historyItems.firstIndex(where: { $0.text == text }) {
+            historyItems.remove(at: idx)
         }
         
-        clipboardHistory.insert(text, at: 0)
+        let item = HistoryItem(
+            id: UUID().uuidString,
+            text: text,
+            imagePath: nil,
+            imageWidth: nil,
+            imageHeight: nil,
+            timestamp: Date()
+        )
+        historyItems.insert(item, at: 0)
         
-        // Limit history to 100 items
-        if clipboardHistory.count > 100 {
-            clipboardHistory.removeLast()
-        }
-        
+        cleanOldHistory()
         saveHistory()
         updateAllItems()
     }
     
+    func addImageHistoryItem(imgData: Data, width: Int, height: Int) {
+        let fileName = "img_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).png"
+        let filePath = imagesDir.appendingPathComponent(fileName).path
+        
+        // Convert to PNG representation and save
+        if let rep = NSBitmapImageRep(data: imgData), let pngData = rep.representation(using: .png, properties: [:]) {
+            try? pngData.write(to: URL(fileURLWithPath: filePath))
+        } else {
+            try? imgData.write(to: URL(fileURLWithPath: filePath))
+        }
+        
+        let item = HistoryItem(
+            id: UUID().uuidString,
+            text: nil,
+            imagePath: filePath,
+            imageWidth: width,
+            imageHeight: height,
+            timestamp: Date()
+        )
+        historyItems.insert(item, at: 0)
+        
+        cleanOldHistory()
+        saveHistory()
+        updateAllItems()
+    }
+    
+    func cleanOldHistory() {
+        if historyItems.count > 100 {
+            let overflow = historyItems.suffix(from: 100)
+            for item in overflow {
+                if let p = item.imagePath {
+                    try? FileManager.default.removeItem(atPath: p)
+                }
+            }
+            historyItems.removeSubrange(100..<historyItems.count)
+        }
+    }
+    
     func loadHistory() {
-        if let data = try? Data(contentsOf: historyFile),
-           let list = try? JSONDecoder().decode([String].self, from: data) {
-            clipboardHistory = list
+        guard let data = try? Data(contentsOf: historyFile) else { return }
+        
+        // 1. Try decoding new HistoryItem model
+        if let list = try? JSONDecoder().decode([HistoryItem].self, from: data) {
+            historyItems = list
+            return
+        }
+        
+        // 2. Backwards compatibility for legacy [String]
+        if let oldList = try? JSONDecoder().decode([String].self, from: data) {
+            historyItems = oldList.map {
+                HistoryItem(id: UUID().uuidString, text: $0, imagePath: nil, imageWidth: nil, imageHeight: nil, timestamp: Date())
+            }
         }
     }
     
     func saveHistory() {
-        if let data = try? JSONEncoder().encode(clipboardHistory) {
+        if let data = try? JSONEncoder().encode(historyItems) {
             try? data.write(to: historyFile)
         }
     }
     
     func loadSnippets() {
         if !FileManager.default.fileExists(atPath: snippetsFile.path) {
-            // Write default snippets
             let defaults: [String: [String: String]] = [
                 "Üldised": [
                     ":date": "Current Date",
@@ -1100,7 +1297,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 self.fileMonitorSource = nil
                 close(fileDescriptor)
                 
-                // Wait 0.1s for the file replacement to complete, then monitor again and reload
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.startMonitoringSnippetsFile()
                     self.loadSnippets()
@@ -1140,7 +1336,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         var isDir: ObjCBool = false
         if FileManager.default.fileExists(atPath: rawPath, isDirectory: &isDir) {
             if !isDir.boolValue {
-                // Exact file match
                 let fileName = URL(fileURLWithPath: rawPath).lastPathComponent
                 return [
                     .header(title: "📄 Fail"),
@@ -1232,11 +1427,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                     tableView.selectRowIndexes(IndexSet(integer: firstSelectable), byExtendingSelection: false)
                     tableView.scrollRowToVisible(firstSelectable)
                 }
+                updatePreviewPane()
                 return
             }
         }
         
-        // 2. Process System Commands (ONLY when user explicitly types a keyword, NOT when empty!)
+        // 2. Process System Commands
         if !trimmed.isEmpty {
             let matchingCommands = SystemCommands.shared.allCommands.filter { command in
                 command.searchableText.contains(trimmed.lowercased())
@@ -1250,24 +1446,81 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                         isSnippet: false,
                         trigger: nil,
                         title: "\(command.icon) \(command.name)",
-                        category: "System",
-                        systemCommandId: command.id,
-                        filePath: nil,
-                        isDirectory: false
+                        category: command.category.rawValue,
+                        systemCommandId: command.id
                     )
                     newRows.append(.item(item))
                 }
             }
         }
         
-        // 3. Process clipboard history (ALWAYS AT THE TOP when query is empty!)
-        let matchingHistory: [ClipItem]
+        // 3. Process clipboard history
+        var matchingHistory: [ClipItem] = []
         if trimmed.isEmpty {
-            matchingHistory = clipboardHistory.map { ClipItem(text: $0, isSnippet: false, trigger: nil, title: $0, category: nil, systemCommandId: nil, filePath: nil, isDirectory: false) }
+            matchingHistory = historyItems.map { hItem in
+                if hItem.isImage {
+                    let w = hItem.imageWidth ?? 0
+                    let h = hItem.imageHeight ?? 0
+                    let title = "🖼️ Pilt (\(w)×\(h) px)"
+                    return ClipItem(
+                        text: hItem.imagePath ?? "",
+                        isSnippet: false,
+                        trigger: nil,
+                        title: title,
+                        category: "Images",
+                        isImage: true,
+                        imagePath: hItem.imagePath,
+                        imageWidth: w,
+                        imageHeight: h,
+                        historyId: hItem.id
+                    )
+                } else {
+                    let txt = hItem.text ?? ""
+                    return ClipItem(
+                        text: txt,
+                        isSnippet: false,
+                        trigger: nil,
+                        title: txt,
+                        category: nil,
+                        historyId: hItem.id
+                    )
+                }
+            }
         } else {
-            matchingHistory = clipboardHistory
-                .filter { $0.localizedCaseInsensitiveContains(trimmed) }
-                .map { ClipItem(text: $0, isSnippet: false, trigger: nil, title: $0, category: nil, systemCommandId: nil, filePath: nil, isDirectory: false) }
+            matchingHistory = historyItems.compactMap { hItem in
+                if hItem.isImage {
+                    if "pilt image photo screenshot".contains(trimmed.lowercased()) {
+                        let w = hItem.imageWidth ?? 0
+                        let h = hItem.imageHeight ?? 0
+                        return ClipItem(
+                            text: hItem.imagePath ?? "",
+                            isSnippet: false,
+                            trigger: nil,
+                            title: "🖼️ Pilt (\(w)×\(h) px)",
+                            category: "Images",
+                            isImage: true,
+                            imagePath: hItem.imagePath,
+                            imageWidth: w,
+                            imageHeight: h,
+                            historyId: hItem.id
+                        )
+                    }
+                    return nil
+                } else {
+                    let txt = hItem.text ?? ""
+                    if txt.lowercased().contains(trimmed.lowercased()) {
+                        return ClipItem(
+                            text: txt,
+                            isSnippet: false,
+                            trigger: nil,
+                            title: txt,
+                            category: nil,
+                            historyId: hItem.id
+                        )
+                    }
+                    return nil
+                }
+            }
         }
         
         if !matchingHistory.isEmpty {
@@ -1277,23 +1530,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
         }
         
-        // 4. Process custom snippets by category
-        let sortedCategories = customSnippets.keys.sorted()
-        for category in sortedCategories {
+        // 4. Process custom snippets
+        for category in customSnippets.keys.sorted() {
             if let snippets = customSnippets[category] {
-                let sortedTriggers = snippets.keys.sorted()
                 var matchingSnippets: [ClipItem] = []
-                
-                for trigger in sortedTriggers {
-                    if let text = snippets[trigger] {
-                        let title = text
-                        let matchText = title.localizedCaseInsensitiveContains(trimmed)
-                        let matchTrigger = trigger.localizedCaseInsensitiveContains(trimmed)
-                        let matchCategory = category.localizedCaseInsensitiveContains(trimmed)
-                        
-                        if trimmed.isEmpty || matchText || matchTrigger || matchCategory {
-                            matchingSnippets.append(ClipItem(text: text, isSnippet: true, trigger: trigger, title: title, category: category, systemCommandId: nil, filePath: nil, isDirectory: false))
-                        }
+                for (trigger, text) in snippets {
+                    if trimmed.isEmpty || trigger.lowercased().contains(trimmed.lowercased()) || text.lowercased().contains(trimmed.lowercased()) {
+                        matchingSnippets.append(ClipItem(text: text, isSnippet: true, trigger: trigger, title: text, category: category))
                     }
                 }
                 
@@ -1306,7 +1549,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
         }
         
-        // 5. Process contacts (query must be at least 2 characters)
+        // 5. Process contacts
         if trimmed.count >= 2 {
             let matchingContacts = fetchContacts(query: trimmed)
             if !matchingContacts.isEmpty {
@@ -1320,7 +1563,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         filteredRows = newRows
         tableView.reloadData()
         
-        // Select first selectable row if available
         if let firstSelectable = filteredRows.firstIndex(where: {
             if case .item = $0 { return true }
             return false
@@ -1328,6 +1570,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             tableView.selectRowIndexes(IndexSet(integer: firstSelectable), byExtendingSelection: false)
             tableView.scrollRowToVisible(firstSelectable)
         }
+        
+        updatePreviewPane()
     }
     
     func fetchContacts(query: String) -> [ClipItem] {
@@ -1338,7 +1582,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         let filtered = allContactsCache.filter { contactItem in
             return queryWords.allSatisfy { contactItem.searchString.contains($0) }
         }
-        
         return filtered.map { $0.item }
     }
 
@@ -1379,7 +1622,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                     }
                     let contactSearchString = searchParts.filter { !$0.isEmpty }.joined(separator: " ").lowercased()
                     
-                    // Add phone numbers
                     for phone in contact.phoneNumbers {
                         let number = phone.value.stringValue
                         let rawLabel = phone.label ?? ""
@@ -1390,7 +1632,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                         list.append(ContactClipItem(item: item, searchString: contactSearchString))
                     }
                     
-                    // Add emails
                     for email in contact.emailAddresses {
                         let address = email.value as String
                         let rawLabel = email.label ?? ""
@@ -1415,13 +1656,102 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
     }
 
-
-
+    // ----------------------------------------------------
+    // Rich Preview Pane Update Logic
+    // ----------------------------------------------------
+    func updatePreviewPane() {
+        let selectedRow = tableView.selectedRow
+        guard selectedRow >= 0 && selectedRow < filteredRows.count else {
+            previewBadgeLabel.stringValue = "Eelvaade"
+            previewMetaLabel.stringValue = ""
+            previewScrollView.isHidden = false
+            previewImageView.isHidden = true
+            previewTextView.string = "Vali vasakult nimekirjast kirje, et näha detailset eelvaadet."
+            return
+        }
+        
+        let row = filteredRows[selectedRow]
+        switch row {
+        case .header(let title):
+            previewBadgeLabel.stringValue = title
+            previewMetaLabel.stringValue = ""
+            previewScrollView.isHidden = false
+            previewImageView.isHidden = true
+            previewTextView.string = ""
+            
+        case .item(let item):
+            // 1. Image Preview
+            if item.isImage, let path = item.imagePath, let img = NSImage(contentsOfFile: path) {
+                previewBadgeLabel.stringValue = "🖼️ Kopeeritud pilt"
+                let w = item.imageWidth ?? Int(img.size.width)
+                let h = item.imageHeight ?? Int(img.size.height)
+                
+                var sizeStr = ""
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: path), let size = attrs[.size] as? Int64 {
+                    let kb = Double(size) / 1024.0
+                    sizeStr = kb > 1024 ? String(format: " • %.1f MB", kb / 1024.0) : String(format: " • %.0f KB", kb)
+                }
+                
+                previewMetaLabel.stringValue = "\(w) × \(h) px\(sizeStr)"
+                previewScrollView.isHidden = true
+                previewImageView.isHidden = false
+                previewImageView.image = img
+                return
+            }
+            
+            // 2. Text / Snippet / Contact / File Preview
+            previewImageView.isHidden = true
+            previewScrollView.isHidden = false
+            
+            if item.isSnippet {
+                previewBadgeLabel.stringValue = "⚡️ Snippet: [\(item.trigger ?? "")]"
+                let chars = item.text.count
+                let lines = item.text.components(separatedBy: "\n").count
+                previewMetaLabel.stringValue = "Kategooria: \(item.category ?? "Üldine") • \(chars) märki • \(lines) rida"
+                previewTextView.string = item.text
+                
+            } else if let sysCmdId = item.systemCommandId {
+                previewBadgeLabel.stringValue = "⚡️ Süsteemikäsk"
+                previewMetaLabel.stringValue = "Kategooria: \(item.category ?? "Süsteem")"
+                previewTextView.string = "Käsk: \(item.title)\nID: \(sysCmdId)\n\nVajuta ⏎ (Return) käsu koheseks täitmiseks."
+                
+            } else if let filePath = item.filePath {
+                if item.isDirectory {
+                    previewBadgeLabel.stringValue = "📁 Kaust"
+                    previewMetaLabel.stringValue = "Vajuta ⇥ (Tab) või ⏎ kausta avamiseks"
+                    previewTextView.string = "Tee: \(filePath)\n\nKasuta Tab klahvi alamkaustadesse liikumiseks ja Backspace klahvi ülemkausta naasmiseks."
+                } else {
+                    previewBadgeLabel.stringValue = "📄 Fail"
+                    previewMetaLabel.stringValue = URL(fileURLWithPath: filePath).lastPathComponent
+                    
+                    let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
+                    if ["png", "jpg", "jpeg", "gif", "webp", "tiff"].contains(ext), let img = NSImage(contentsOfFile: filePath) {
+                        previewScrollView.isHidden = true
+                        previewImageView.isHidden = false
+                        previewImageView.image = img
+                        previewMetaLabel.stringValue = "\(Int(img.size.width)) × \(Int(img.size.height)) px"
+                        return
+                    } else if let textContent = try? String(contentsOfFile: filePath, encoding: .utf8) {
+                        previewTextView.string = textContent
+                    } else {
+                        previewTextView.string = "Failitee: \(filePath)"
+                    }
+                }
+            } else {
+                // Clipboard history text item
+                previewBadgeLabel.stringValue = "📋 Kopeeritud tekst"
+                let chars = item.text.count
+                let lines = item.text.components(separatedBy: "\n").count
+                let words = item.text.split { $0.isWhitespace || $0.isNewline }.count
+                previewMetaLabel.stringValue = "\(chars) märki • \(words) sõna • \(lines) rida"
+                previewTextView.string = item.text
+            }
+        }
+    }
     
     // ----------------------------------------------------
-    // Action handlers
+    // Action handlers & Pasting
     // ----------------------------------------------------
-    // Helper to extract unique variables in [[var]] format
     func extractVariables(from text: String) -> [String] {
         var variables: [String] = []
         let pattern = "\\[\\[([^\\]]+)\\]\\]"
@@ -1443,7 +1773,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         return variables
     }
     
-    // Helper to show modal input dialog
     func showInputDialog(title: String, prompt: String, defaultValue: String = "") -> String? {
         let alert = NSAlert()
         alert.messageText = title
@@ -1454,8 +1783,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         let inputTextField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
         inputTextField.stringValue = defaultValue
         alert.accessoryView = inputTextField
-        
-        // Set focus to the text field when alert is shown
         alert.window.initialFirstResponder = inputTextField
         
         let response = alert.runModal()
@@ -1483,50 +1810,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         guard selectedRow >= 0 && selectedRow < filteredRows.count else { return }
         guard case .item(let item) = filteredRows[selectedRow] else { return }
         
-        // Only allow deleting clipboard history items, not snippets
-        guard !item.isSnippet else { return }
+        guard !item.isSnippet, item.systemCommandId == nil, item.filePath == nil else { return }
         
-        // Remove from clipboardHistory
-        if let idx = clipboardHistory.firstIndex(of: item.text) {
-            clipboardHistory.remove(at: idx)
+        if let hId = item.historyId, let idx = historyItems.firstIndex(where: { $0.id == hId }) {
+            let removed = historyItems.remove(at: idx)
+            if let p = removed.imagePath {
+                try? FileManager.default.removeItem(atPath: p)
+            }
             saveHistory()
-            
-            // Reload and filter items keeping the current search text
             filterItems(query: searchField.stringValue)
             
-            // Select the same row (or the next selectable row)
             if selectedRow < filteredRows.count {
-                // Check if the current row is selectable
                 if case .item = filteredRows[selectedRow] {
                     tableView.selectRowIndexes(IndexSet(integer: selectedRow), byExtendingSelection: false)
-                } else {
-                    // Try to find the next selectable row
-                    var nextSelectable = selectedRow
-                    while nextSelectable < filteredRows.count {
-                        if case .item = filteredRows[nextSelectable] {
-                            tableView.selectRowIndexes(IndexSet(integer: nextSelectable), byExtendingSelection: false)
-                            break
-                        }
-                        nextSelectable += 1
-                    }
-                }
-            } else {
-                // Select the last selectable row
-                if let lastSelectable = filteredRows.enumerated().reversed().first(where: {
-                    if case .item = $1 { return true }
-                    return false
-                }) {
-                    tableView.selectRowIndexes(IndexSet(integer: lastSelectable.offset), byExtendingSelection: false)
                 }
             }
+            updatePreviewPane()
         }
     }
 
     func checkTriggers(buffer: String) -> String? {
+        let bufferLower = buffer.lowercased()
         for category in customSnippets.keys {
             if let snippets = customSnippets[category] {
                 for trigger in snippets.keys {
-                    if trigger.hasPrefix(":") && buffer.hasSuffix(trigger) {
+                    if trigger.hasPrefix(":") && bufferLower.hasSuffix(trigger.lowercased()) {
                         return trigger
                     }
                 }
@@ -1538,15 +1846,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     func expandSnippet(trigger: String, deleteCount: Int) {
         var textToPaste: String? = nil
         for category in customSnippets.keys {
-            if let snippets = customSnippets[category], let text = snippets[trigger] {
-                textToPaste = text
-                break
+            if let snippets = customSnippets[category] {
+                if let text = snippets[trigger] {
+                    textToPaste = text
+                    break
+                }
+                for (k, v) in snippets {
+                    if k.caseInsensitiveCompare(trigger) == .orderedSame {
+                        textToPaste = v
+                        break
+                    }
+                }
+                if textToPaste != nil { break }
             }
         }
         
         guard var text = textToPaste else { return }
         
-        // Evaluate dynamic snippets
         if trigger == ":date" {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd"
@@ -1557,7 +1873,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             text = formatter.string(from: Date())
         }
         
-        // Hide window if open
         DispatchQueue.main.async {
             self.hideWindow()
         }
@@ -1572,7 +1887,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 bsUp?.post(tap: .cgSessionEventTap)
             }
             
-            // Wait 0.1s for backspaces to register, then paste
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.pasteDirectly(text: text)
             }
@@ -1583,61 +1897,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         guard index >= 0 && index < filteredRows.count else { return }
         guard case .item(let item) = filteredRows[index] else { return }
         
-        // 1. Check if this is a file system item
+        // 1. File System Item
         if let filePath = item.filePath {
             if item.isDirectory {
-                // Drill down into folder
                 let newPath = filePath.hasSuffix("/") ? filePath : filePath + "/"
                 let displayPath = newPath.replacingOccurrences(of: NSHomeDirectory(), with: "~")
                 searchField.stringValue = displayPath
                 filterItems(query: displayPath)
                 return
             } else {
-                // Open file with default application
                 hideWindow()
                 NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
                 return
             }
         }
         
-        // 2. Check if this is a system command
+        // 2. System Command
         if let commandId = item.systemCommandId {
             hideWindow()
             if let command = SystemCommands.shared.allCommands.first(where: { $0.id == commandId }) {
-                logMessage("Executing system command: \(command.name)")
                 command.execute()
             }
             return
         }
         
-        var textToPaste = item.text
-        
-        // Dynamic snippet evaluation
-        if item.isSnippet {
-            if item.trigger == ":date" {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyy-MM-dd"
-                textToPaste = formatter.string(from: Date())
-            } else if item.trigger == ":time" {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "HH:mm:ss"
-                textToPaste = formatter.string(from: Date())
+        // 3. Image Item (Paste image binary directly!)
+        if item.isImage, let imgPath = item.imagePath, let imgData = try? Data(contentsOf: URL(fileURLWithPath: imgPath)) {
+            hideWindow()
+            
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.declareTypes([.png, .tiff], owner: nil)
+            pasteboard.setData(imgData, forType: .png)
+            if let nsImg = NSImage(data: imgData), let tiffData = nsImg.tiffRepresentation {
+                pasteboard.setData(tiffData, forType: .tiff)
             }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                let vDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true)
+                vDown?.flags = .maskCommand
+                let vUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: false)
+                vUp?.flags = .maskCommand
+                
+                vDown?.post(tap: .cgSessionEventTap)
+                vUp?.post(tap: .cgSessionEventTap)
+            }
+            return
         }
         
-        // Hide main window first so the target window gets focus back
+        // 4. Text / Snippet Item
         hideWindow()
-        
-        pasteDirectly(text: textToPaste)
+        pasteDirectly(text: item.text)
     }
 
     func pasteDirectly(text: String) {
         var textToPaste = text
         
-        // Check for variable prompts
         let variables = extractVariables(from: textToPaste)
         if !variables.isEmpty {
-            // Activate our app to show dialogs on top
             NSApp.activate(ignoringOtherApps: true)
             
             var replacements: [String: String] = [:]
@@ -1646,24 +1963,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 if let value = showInputDialog(title: "Snippet muutuja", prompt: prompt, defaultValue: "") {
                     replacements[variable] = value
                 } else {
-                    // Abort on cancel
                     return
                 }
             }
             
-            // Replace variables
             for (variable, value) in replacements {
                 let placeholder = "[[\(variable)]]"
                 textToPaste = textToPaste.replacingOccurrences(of: placeholder, with: value)
             }
         }
         
-        // Copy selected item to pasteboard
         let pasteboard = NSPasteboard.general
         pasteboard.declareTypes([.string], owner: nil)
         pasteboard.setString(textToPaste, forType: .string)
         
-        // Wait 0.15s for target app to gain focus, then post Command-V
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             let vDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true)
             vDown?.flags = .maskCommand
@@ -1680,9 +1993,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     }
     
     @objc func clearHistory() {
-        clipboardHistory.removeAll()
+        for item in historyItems {
+            if let p = item.imagePath {
+                try? FileManager.default.removeItem(atPath: p)
+            }
+        }
+        historyItems.removeAll()
         saveHistory()
         updateAllItems()
+        updatePreviewPane()
     }
     
     @objc func quitApp() {
@@ -1711,6 +2030,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 if case .item = filteredRows[nextRow] {
                     tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
                     tableView.scrollRowToVisible(nextRow)
+                    updatePreviewPane()
                     break
                 }
                 nextRow += 1
@@ -1723,6 +2043,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 if case .item = filteredRows[prevRow] {
                     tableView.selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
                     tableView.scrollRowToVisible(prevRow)
+                    updatePreviewPane()
                     break
                 }
                 prevRow -= 1
@@ -1735,7 +2056,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
             return true
         } else if commandSelector == #selector(NSResponder.insertTab(_:)) {
-            // Tab key: If current item is a directory or path item, drill down into it!
             let selectedRow = tableView.selectedRow
             if selectedRow >= 0 && selectedRow < filteredRows.count {
                 if case .item(let item) = filteredRows[selectedRow] {
@@ -1750,7 +2070,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
             return true
         } else if commandSelector == #selector(NSResponder.deleteBackward(_:)) {
-            // Backspace key: If in folder navigation and ending with "/", jump UP one folder level instantly
             let current = searchField.stringValue
             if (current.hasPrefix("~") || current.hasPrefix("/")) && current.hasSuffix("/") {
                 if current == "~/" || current == "/" {
@@ -1813,6 +2132,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
     }
     
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updatePreviewPane()
+    }
+    
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
         let rowData = filteredRows[row]
         
@@ -1822,7 +2145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 return title
             case .item(let item):
                 let titleText = item.title.replacingOccurrences(of: "\n", with: " ")
-                let displayText = titleText.count > 65 ? String(titleText.prefix(65)) + "..." : titleText
+                let displayText = titleText.count > 50 ? String(titleText.prefix(50)) + "..." : titleText
                 if item.isSnippet {
                     return "    [\(item.trigger ?? "")] \(displayText)"
                 }
@@ -1833,7 +2156,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             case .header:
                 return ""
             case .item:
-                // Find the index of this item among all selectable items in filteredRows
                 var itemIndex = 0
                 for i in 0...row {
                     if case .item = filteredRows[i] {

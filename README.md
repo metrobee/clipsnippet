@@ -28,9 +28,11 @@ brew install --cask clipsnippet
     *   **Snippet categories** – Organized groups
     *   **System commands** – Quick actions for macOS
     *   **macOS contacts** – When typing 2 or more characters
-*   **Visual Grouping:** The list is grouped under native section headers:
+*   **Visual Grouping & Rich Side Panel Preview:** 
+    *   **Side Panel Preview:** An integrated right-hand pane shows full formatted multi-line text, character/line counts, snippet details, file info, and full-resolution scaled previews for clipboard images.
+    *   **Image Clipboard Support:** Copy images anywhere (screenshots, browser, apps); ClipSnippet captures them into history with dimensions and allows previewing and pasting them directly back into any app.
     *   `💻 System: <Category>` – macOS system actions (Files, Power, Display, Audio, Apps).
-    *   `📋 Clipboard History` – Your recently copied items.
+    *   `📋 Clipboard History` – Your recently copied text and image items.
     *   `⚡️ Snippets: <Category>` – Your custom text expansions grouped by category.
     *   `👥 Contacts` – Your macOS contacts (requires 2+ characters).
 *   **Insert (Paste):**
@@ -168,9 +170,11 @@ brew install --cask clipsnippet
     *   **Kategooriad** – Grupeeritud laiendused
     *   **Süsteemi käsud** – macOS-i kiirtoimingud
     *   **macOS-i kontaktid** – Kui sisestad vähemalt 2 tähte
-*   **Grupeerimine:** Nimekiri on jagatud visuaalselt kategooriateks:
+*   **Grupeerimine ja Eelvaate Küljepaneel (Side Panel Preview):**
+    *   **Eelvaate Küljepaneel:** Parempoolne integreeritud paneel näitab valitud kirje täisteksti (koos reamurdmise, tähemärkide, sõnade ja ridade arvuga), faili infot, snippetite detaile ning kopeeritud piltide skaleeritud eelvaadet koos resolutsiooniga.
+    *   **Lõikelaua Piltide Tugi:** Kopeeri pilte või ekraanitõmmiseid (`Cmd+C` / screenshot) – ClipSnippet talletab need automaatselt ajalukku, näitab eelvaadet ja võimaldab neid `Enter` või `Cmd+1-9` abil otse mis tahes programmi kleepida.
     *   `💻 System: <Kategooria>` – macOS-i süsteemi toimingud (Failid, Toide, Kuva, Heli, Rakendused).
-    *   `📋 Clipboard History` – Lõikelaua ajalugu.
+    *   `📋 Clipboard History` – Lõikelaua teksti ja piltide ajalugu.
     *   `⚡️ Snippets: <Kategooria>` – Kasutaja seadistatud laiendused vastavalt JSON-faili jaotustele.
     *   `👥 Contacts` – macOS-i kontaktid (vajab vähemalt 2 tähte).
 *   **Sisestamine (kleepimine):**
