@@ -73,6 +73,9 @@ func myEventTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEven
             let flags = nsEvent.modifierFlags
             if flags.contains(.command) || flags.contains(.control) {
                 typedBuffer = ""
+                if flags.contains(.command) && !flags.contains(.control) && !flags.contains(.option) && !flags.contains(.shift) && keyCode == Int64(kVK_ANSI_C) {
+                    appDelegate.handleCmdCPressed()
+                }
                 return Unmanaged.passUnretained(event)
             }
             
@@ -727,6 +730,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var allContactsCache: [ContactClipItem] = []
     var eventTapRef: CFMachPort?
     var eventTapSource: CFRunLoopSource?
+    var lastCmdCTime: TimeInterval = 0
+    var lastCmdCTargetPrevString: String? = nil
     
     enum TableRow {
         case header(title: String)
@@ -798,7 +803,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
         
         let menu = NSMenu()
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5.0"
         let versionItem = NSMenuItem(title: "ClipSnippet v\(version)", action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
         menu.addItem(versionItem)
@@ -1136,6 +1141,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     // ----------------------------------------------------
     // Clipboard Monitoring & History Management
     // ----------------------------------------------------
+    func handleCmdCPressed() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let delta = now - lastCmdCTime
+        let threshold: TimeInterval = 0.45
+        
+        let currentClipboardString = NSPasteboard.general.string(forType: .string)
+        
+        if delta <= threshold, let baseText = lastCmdCTargetPrevString, !baseText.isEmpty {
+            let prevChangeCount = NSPasteboard.general.changeCount
+            self.lastCmdCTime = now
+            
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                
+                var attempts = 0
+                while attempts < 15 && NSPasteboard.general.changeCount == prevChangeCount {
+                    usleep(10000) // 10ms
+                    attempts += 1
+                }
+                
+                DispatchQueue.main.async {
+                    let pb = NSPasteboard.general
+                    guard let newText = pb.string(forType: .string), !newText.isEmpty else { return }
+                    
+                    let combinedText = baseText + "\n" + newText
+                    pb.clearContents()
+                    pb.setString(combinedText, forType: .string)
+                    self.lastChangeCount = pb.changeCount
+                    self.lastCmdCTargetPrevString = combinedText
+                    self.addTextHistoryItem(combinedText)
+                    
+                    NSSound(named: "Tink")?.play()
+                    logMessage("Cmd+C+C Append: Appended to clipboard (\(combinedText.count) chars).")
+                }
+            }
+        } else {
+            self.lastCmdCTime = now
+            self.lastCmdCTargetPrevString = currentClipboardString
+        }
+    }
+    
     func checkClipboard() {
         let pasteboard = NSPasteboard.general
         if pasteboard.changeCount != lastChangeCount {

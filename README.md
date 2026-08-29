@@ -35,6 +35,9 @@ brew install --cask clipsnippet
     *   `📋 Clipboard History` – Your recently copied text and image items.
     *   `⚡️ Snippets: <Category>` – Your custom text expansions grouped by category.
     *   `👥 Contacts` – Your macOS contacts (requires 2+ characters).
+*   **Append to Clipboard (`Cmd + C + C`):**
+    *   Press **`Cmd + C` twice quickly** (or double-tap `C` while holding `Cmd`) when copying text to **append** the newly selected text to the previous clipboard content on a new line (`\n`).
+    *   Provides instant audio feedback (`Tink` sound) when text is merged. Multiple quick presses continue appending in a chain.
 *   **Insert (Paste):**
     *   Use the arrow keys (Up/Down) to select an item and press **Enter** – the window will hide and the text will be automatically pasted into the active text field.
     *   Press **`Cmd + 1`** through **`Cmd + 9`** to instantly paste the corresponding item from the list (headers are automatically skipped).
@@ -177,6 +180,9 @@ brew install --cask clipsnippet
     *   `📋 Clipboard History` – Lõikelaua teksti ja piltide ajalugu.
     *   `⚡️ Snippets: <Kategooria>` – Kasutaja seadistatud laiendused vastavalt JSON-faili jaotustele.
     *   `👥 Contacts` – macOS-i kontaktid (vajab vähemalt 2 tähte).
+*   **Lõikelauale lisamine / Append (`Cmd + C + C`):**
+    *   Vajuta teksti kopeerimisel **kiiresti kaks korda `Cmd + C`** (või hoia `Cmd` all ja vajuta `C` kaks korda), et **liita** uus kopeeritud tekst eelmisele lõikelaua sisule uuele reale (`\n`).
+    *   Õnnestunud liitmisel esitatakse kohene heliline kinnitus (`Tink`). Järjestikused kiirvajutused lisavad tekste ahelana edasi.
 *   **Sisestamine (kleepimine):**
     *   Vali nooleklahvidega (Üles/Alla) rida ja vajuta **Enter** – aken sulgub ning tekst kleebitakse automaatselt aktiivsesse tekstikasti.
     *   Vajuta kiirklahvi **`Cmd + 1`** kuni **`Cmd + 9`**, et kleepida koheselt vastav rida otse nimekirjast (sektsioonide pealkirjad hüpatakse otseteede loendamisel automaatselt üle).
