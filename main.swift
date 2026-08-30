@@ -947,10 +947,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         previewTextView.textContainer?.widthTracksTextView = true
         previewScrollView.documentView = previewTextView
         
-        // Image Preview
+        // Image Preview (Contained, proportional scaling with zero layout expansion)
         previewImageView = NSImageView()
         previewImageView.imageScaling = .scaleProportionallyUpOrDown
         previewImageView.imageAlignment = .alignCenter
+        previewImageView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        previewImageView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        previewImageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        previewImageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         previewImageView.wantsLayer = true
         previewImageView.layer?.cornerRadius = 8
         previewImageView.layer?.masksToBounds = true
@@ -1718,9 +1722,56 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     // ----------------------------------------------------
     // Rich Preview Pane Update Logic
     // ----------------------------------------------------
+    // ----------------------------------------------------
+    // Rich Preview Pane Update Logic & Dynamic Window Sizing
+    // ----------------------------------------------------
+    let defaultWindowWidth: CGFloat = 860
+    let defaultWindowHeight: CGFloat = 480
+    
+    func adjustWindowSize(forImageSize imageSize: CGSize?) {
+        guard let screen = NSScreen.main ?? window.screen else { return }
+        let visibleFrame = screen.visibleFrame
+        
+        var targetWidth = defaultWindowWidth
+        var targetHeight = defaultWindowHeight
+        
+        if let imgSize = imageSize, imgSize.width > 0 && imgSize.height > 0 {
+            // Constrain preview to comfortable bounding box (never overtaking screen)
+            let maxAllowedWidth = min(visibleFrame.width * 0.70, 960)
+            let maxAllowedHeight = min(visibleFrame.height * 0.70, 560)
+            
+            let aspectRatio = imgSize.width / imgSize.height
+            if aspectRatio > 1.3 {
+                // Wide landscape image: slightly wider window
+                targetWidth = min(maxAllowedWidth, 920)
+                targetHeight = defaultWindowHeight
+            } else if aspectRatio < 0.75 {
+                // Tall portrait image: slightly taller window
+                targetWidth = defaultWindowWidth
+                targetHeight = min(maxAllowedHeight, 540)
+            } else {
+                // Balanced aspect ratio
+                targetWidth = min(maxAllowedWidth, 900)
+                targetHeight = min(maxAllowedHeight, 520)
+            }
+        }
+        
+        let currentFrame = window.frame
+        if abs(currentFrame.width - targetWidth) > 1 || abs(currentFrame.height - targetHeight) > 1 {
+            let newX = currentFrame.midX - (targetWidth / 2)
+            let newY = currentFrame.midY - (targetHeight / 2)
+            let boundedX = max(visibleFrame.minX + 20, min(newX, visibleFrame.maxX - targetWidth - 20))
+            let boundedY = max(visibleFrame.minY + 20, min(newY, visibleFrame.maxY - targetHeight - 20))
+            
+            let newFrame = CGRect(x: boundedX, y: boundedY, width: targetWidth, height: targetHeight)
+            window.setFrame(newFrame, display: true, animate: false)
+        }
+    }
+
     func updatePreviewPane() {
         let selectedRow = tableView.selectedRow
         guard selectedRow >= 0 && selectedRow < filteredRows.count else {
+            adjustWindowSize(forImageSize: nil)
             previewBadgeLabel.stringValue = "Eelvaade"
             previewMetaLabel.stringValue = ""
             previewScrollView.isHidden = false
@@ -1732,6 +1783,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         let row = filteredRows[selectedRow]
         switch row {
         case .header(let title):
+            adjustWindowSize(forImageSize: nil)
             previewBadgeLabel.stringValue = title
             previewMetaLabel.stringValue = ""
             previewScrollView.isHidden = false
@@ -1741,7 +1793,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         case .item(let item):
             // 1. Image Preview
             if item.isImage, let path = item.imagePath, let img = NSImage(contentsOfFile: path) {
-                previewBadgeLabel.stringValue = "🖼️ Kopeeritud pilt"
+                adjustWindowSize(forImageSize: img.size)
+                previewBadgeLabel.stringValue = "Kopeeritud pilt"
                 let w = item.imageWidth ?? Int(img.size.width)
                 let h = item.imageHeight ?? Int(img.size.height)
                 
@@ -1759,46 +1812,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
             
             // 2. Text / Snippet / Contact / File Preview
+            adjustWindowSize(forImageSize: nil)
             previewImageView.isHidden = true
             previewScrollView.isHidden = false
             
             if item.isSnippet {
-                previewBadgeLabel.stringValue = "⚡️ Snippet: [\(item.trigger ?? "")]"
+                previewBadgeLabel.stringValue = "Snippet: [\(item.trigger ?? "")]"
                 let chars = item.text.count
                 let lines = item.text.components(separatedBy: "\n").count
                 previewMetaLabel.stringValue = "Kategooria: \(item.category ?? "Üldine") • \(chars) märki • \(lines) rida"
                 previewTextView.string = item.text
                 
             } else if let sysCmdId = item.systemCommandId {
-                previewBadgeLabel.stringValue = "⚡️ Süsteemikäsk"
+                previewBadgeLabel.stringValue = "Süsteemikäsk"
                 previewMetaLabel.stringValue = "Kategooria: \(item.category ?? "Süsteem")"
                 previewTextView.string = "Käsk: \(item.title)\nID: \(sysCmdId)\n\nVajuta ⏎ (Return) käsu koheseks täitmiseks."
                 
             } else if let filePath = item.filePath {
                 if item.isDirectory {
-                    previewBadgeLabel.stringValue = "📁 Kaust"
+                    previewBadgeLabel.stringValue = "Kaust"
                     previewMetaLabel.stringValue = "Vajuta ⇥ (Tab) või ⏎ kausta avamiseks"
                     previewTextView.string = "Tee: \(filePath)\n\nKasuta Tab klahvi alamkaustadesse liikumiseks ja Backspace klahvi ülemkausta naasmiseks."
                 } else {
-                    previewBadgeLabel.stringValue = "📄 Fail"
-                    previewMetaLabel.stringValue = URL(fileURLWithPath: filePath).lastPathComponent
-                    
                     let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
                     if ["png", "jpg", "jpeg", "gif", "webp", "tiff"].contains(ext), let img = NSImage(contentsOfFile: filePath) {
+                        adjustWindowSize(forImageSize: img.size)
+                        previewBadgeLabel.stringValue = "Pildifail"
                         previewScrollView.isHidden = true
                         previewImageView.isHidden = false
                         previewImageView.image = img
                         previewMetaLabel.stringValue = "\(Int(img.size.width)) × \(Int(img.size.height)) px"
                         return
-                    } else if let textContent = try? String(contentsOfFile: filePath, encoding: .utf8) {
-                        previewTextView.string = textContent
                     } else {
-                        previewTextView.string = "Failitee: \(filePath)"
+                        previewBadgeLabel.stringValue = "Fail"
+                        previewMetaLabel.stringValue = URL(fileURLWithPath: filePath).lastPathComponent
+                        if let textContent = try? String(contentsOfFile: filePath, encoding: .utf8) {
+                            previewTextView.string = textContent
+                        } else {
+                            previewTextView.string = "Failitee: \(filePath)"
+                        }
                     }
                 }
             } else {
                 // Clipboard history text item
-                previewBadgeLabel.stringValue = "📋 Kopeeritud tekst"
+                previewBadgeLabel.stringValue = "Kopeeritud tekst"
                 let chars = item.text.count
                 let lines = item.text.components(separatedBy: "\n").count
                 let words = item.text.split { $0.isWhitespace || $0.isNewline }.count
