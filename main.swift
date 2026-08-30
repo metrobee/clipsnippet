@@ -772,6 +772,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             loadContactsCache()
         }
         
+        // Listen for live Contacts store changes (e.g. Google Contacts sync in macOS)
+        NotificationCenter.default.addObserver(forName: .CNContactStoreDidChange, object: nil, queue: .main) { [weak self] _ in
+            logMessage("CNContactStoreDidChange detected, reloading contacts cache...")
+            self?.loadContactsCache()
+        }
+        
         // Set up status bar
         setupStatusItem()
         
@@ -1641,6 +1647,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             CNContactFamilyNameKey as CNKeyDescriptor,
             CNContactNicknameKey as CNKeyDescriptor,
             CNContactOrganizationNameKey as CNKeyDescriptor,
+            CNContactJobTitleKey as CNKeyDescriptor,
+            CNContactDepartmentNameKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
             CNContactEmailAddressesKey as CNKeyDescriptor
         ]
@@ -1657,9 +1665,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                     let nameToUse = fullName.isEmpty ? (nickname.isEmpty ? "Unknown" : nickname) : fullName
                     
                     let orgName = contact.organizationName
-                    let orgStr = orgName.isEmpty ? "" : " [\(orgName)]"
+                    let jobTitle = contact.jobTitle
+                    let deptName = contact.departmentName
+                    var orgDetails: [String] = []
+                    if !orgName.isEmpty { orgDetails.append(orgName) }
+                    if !jobTitle.isEmpty { orgDetails.append(jobTitle) }
+                    let orgStr = orgDetails.isEmpty ? "" : " [\(orgDetails.joined(separator: " • "))]"
                     
-                    var searchParts = [given, family, fullName, nickname, orgName]
+                    var searchParts = [given, family, fullName, nickname, orgName, jobTitle, deptName]
                     for phone in contact.phoneNumbers {
                         searchParts.append(phone.value.stringValue)
                     }
