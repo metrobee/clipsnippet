@@ -260,20 +260,22 @@ Uued laiendused ja kategooriad rakenduvad **koheselt taustal pärast faili salve
 *   **Muutujad:** Snippetis saab kasutada kohahoidjat `[[muutuja_nimi]]` (nagu ülaltoodud `:tervitus` näites `[[Kliendi nimi]]`). Kui selline snippet käivitatakse, küsib rakendus sisendit hüpikaknaga ja asendab selle enne kleepimist.
 *   **Reaalajas asendamine (Text Expansion):** Kõik tekstilaiendused, mille triger algab kooloniga (nt `:allkiri` või `:tel`), asendatakse kirjutamise ajal automaatselt reaalajas igas macOS-i rakenduses (täpselt nagu Espansos). Trigerid, mis ei alga kooloniga (nt `minu kohandatud shortcut`), ei asendu kirjutamisel automaatselt (et vältida juhuslikke asendusi tavalise teksti kirjutamisel), kuid neid saab ikkagi otsida ja kleepida otsinguakna kaudu (`Cmd + Option + C`).
 
-### 👥 Kontaktide integratsioon (v1.2.0+)
+### Kontaktide ja Google Contacts integratsioon (v1.5.0+)
 
-ClipSnippet sisaldab sisseehitatud macOS-i kontaktide otsingut (mis toimib kohalike, iCloudi või Google'i kontaktidega).
+ClipSnippet sisaldab sisseehitatud macOS-i kontaktide otsingut (`CNContactStore`), mis ühildub Apple'i kohaliku kontaktiraamatu, iCloudi ja Google Contacts'iga.
 *   **Käivitamine:** Kirjuta otsinguväljale vähemalt 2 tähte.
-*   **Otsitavad väljad:** Otsib eesnime, perekonnanime, hüüdnime, e-posti aadressi, telefoninumbri ja ettevõtte/organisatsiooni väljadelt.
-*   **Mitme sõnaga otsing:** Toetab AND-otsingut (nt `madis meldre` leiab kontaktid, kelle andmetes esinevad mõlemad sõnad).
-*   **Asünkroonne taustatöö:** Kontaktid laetakse ja puhverdatakse taustal, et otsinguaken töötaks ilma igasuguse viivituseta.
-*   **Õigused:** Vajab kontaktide lugemise õigust (`NSContactsUsageDescription`). macOS küsib seda esimesel käivitamisel.
+*   **Otsitavad väljad:** Eesnimi, perekonnanimi, hüüdnimi, telefoninumbrid, e-posti aadressid, ettevõte, osakond ja ametinimetus (`jobTitle`).
+*   **Reaalajas automaatsünkroon (`CNContactStoreDidChange`):** Kui lisad Google'is või telefonis uue kontakti ja macOS selle sünkroonib, uuendab ClipSnippet oma otsinguindeksi taustal koheselt ilma taaskäivituseta.
+*   **Asünkroonne taustatöö:** Kontaktid puhverdatakse taustalõimes, tagades 0 ms otsingukiiruse.
 
-## 🛠️ Automaatne käivitumine sisselogimisel (LaunchAgent)
+### Dünaamiline pildi eelvaate bounding-box ja akna automaatne taastamine (v1.5.1)
 
+*   **Proportsionaalne pildiskaala:** Kopeeritud piltide ja ekraanitõmmiste eelvaade mahub alati mugavalt akna eelvaatekasti (`scaleProportionallyUpOrDown`), vältides akna venimist üle ekraani.
+*   **Automaatne akna taastamine (`adjustWindowSize`):** Kui kerid pildilt tagasi teksti, koodilõigu või kontakti peale, tõmbub aken koheselt tagasi vaikimisi kompaktsetesse mõõtmetesse (`860 × 480 px`).
+
+## Automaatne käivitumine sisselogimisel (LaunchAgent)
 
 Rakendus on seadistatud käivituma automaatselt arvuti sisselülitamisel macOS LaunchAgent abil.
-
 Teenuse seadistusfail asub kaustas:
 `~/Library/LaunchAgents/com.metrobee.clipsnippet.plist`
 
@@ -288,10 +290,20 @@ Teenuse seadistusfail asub kaustas:
 
 ---
 
-## 💻 Koodi uuesti kompileerimine ja pakkimine
+## Koodi uuesti kompileerimine ja pakkimine
 
 Kui teed koodis muudatusi, saad rakenduse uuesti kompileerida, pakkida ja automaatselt allkirjastada käivitades kaustas terminalis:
 ```bash
-swiftc -sdk $(xcrun --show-sdk-path) -O main.swift -o ClipSnippet && ./package.sh
+./package.sh
 ```
-*Märkus: `package.sh` allkirjastab rakenduse ad-hoc allkirjaga (`codesign`), mis tagab, et macOS ei blokeeri selle tööd.*
+
+## Paigaldamine Homebrew kaudu
+
+```bash
+brew tap metrobee/tap
+brew install --cask clipsnippet
+```
+Uuendamine:
+```bash
+brew upgrade --cask clipsnippet
+```
