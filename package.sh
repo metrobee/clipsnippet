@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-echo "🔨 Compiling ClipSnippet..."
+echo "[BUILD] Compiling ClipSnippet..."
 swiftc -O main.swift -o ClipSnippet
 
-echo "📦 Packaging ClipSnippet.app..."
+echo "[PACKAGE] Packaging ClipSnippet.app..."
 
 # 1. Create directory structure
 mkdir -p ClipSnippet.app/Contents/MacOS
@@ -27,7 +27,7 @@ cat <<EOF > ClipSnippet.app/Contents/Info.plist
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.5.1</string>
+    <string>1.5.2</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
@@ -41,12 +41,18 @@ cat <<EOF > ClipSnippet.app/Contents/Info.plist
 </dict>
 </plist>
 EOF
-# 4. Sign the app bundle ad-hoc to satisfy macOS security requirements
-codesign --force --deep --sign - ClipSnippet.app
 
-# 5. Create release zip
+# 4. Sign the app bundle with stable designated requirement
+codesign --force --deep --sign - --requirements '=designated => identifier "com.metrobee.clipsnippet"' ClipSnippet.app
+
+# 5. Deploy to /Applications
+rm -rf /Applications/ClipSnippet.app
+cp -R ClipSnippet.app /Applications/ClipSnippet.app
+codesign --force --deep --sign - --requirements '=designated => identifier "com.metrobee.clipsnippet"' /Applications/ClipSnippet.app
+
+# 6. Create release zip
 rm -f ClipSnippet.zip
 zip -r -y -q ClipSnippet.zip ClipSnippet.app
 
-echo "✅ ClipSnippet.app packaged and signed successfully!"
-echo "📦 SHA256: $(shasum -a 256 ClipSnippet.zip | awk '{print $1}')"
+echo "[SUCCESS] ClipSnippet.app packaged, deployed to /Applications, and signed successfully."
+echo "[INFO] SHA256: $(shasum -a 256 ClipSnippet.zip | awk '{print $1}')"

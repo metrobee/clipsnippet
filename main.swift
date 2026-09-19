@@ -29,7 +29,11 @@ func logMessage(_ msg: String) {
 
 func hotKeyHandler(nextHandler: EventHandlerCallRef?, theEvent: EventRef?, userData: UnsafeMutableRawPointer?) -> OSStatus {
     logMessage("Hotkey handler triggered globally!")
+    let frontApp = NSWorkspace.shared.frontmostApplication
     DispatchQueue.main.async {
+        if let app = frontApp, app.bundleIdentifier != Bundle.main.bundleIdentifier {
+            AppDelegate.shared?.targetApp = app
+        }
         AppDelegate.shared?.toggleWindow()
     }
     return noErr
@@ -678,6 +682,25 @@ class BorderlessWindow: NSPanel {
             }
         }
         
+        // Escape key to close window
+        if event.keyCode == 53 {
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                appDelegate.hideWindow()
+                return true
+            }
+        }
+        
+        // Return key (36) or Keypad Enter (76)
+        if event.keyCode == 36 || event.keyCode == 76 {
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                let selectedRow = appDelegate.tableView.selectedRow
+                if selectedRow >= 0 {
+                    appDelegate.selectAndPaste(index: selectedRow)
+                    return true
+                }
+            }
+        }
+        
         // Delete history items using Option+Delete, Control+Delete, Command+Delete
         // or just Backspace/Delete if the search field is empty
         if event.keyCode == 51 || event.keyCode == 117 {
@@ -732,6 +755,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var eventTapSource: CFRunLoopSource?
     var lastCmdCTime: TimeInterval = 0
     var lastCmdCTargetPrevString: String? = nil
+    var targetApp: NSRunningApplication? = nil
+    var lastAXLogTime: TimeInterval = 0
     
     enum TableRow {
         case header(title: String)
@@ -804,7 +829,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.title = "📋"
+            button.title = "CS"
             button.toolTip = "ClipSnippet"
         }
         
@@ -1071,7 +1096,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             _ = AXIsProcessTrustedWithOptions(options)
         }
         let isTrusted = AXIsProcessTrusted()
-        logMessage("Accessibility trusted status: \(isTrusted)")
+        let now = ProcessInfo.processInfo.systemUptime
+        if isTrusted {
+            logMessage("Accessibility trusted status: true")
+        } else if now - lastAXLogTime > 60.0 {
+            lastAXLogTime = now
+            logMessage("Accessibility trusted status: false - waiting for Accessibility permissions.")
+        }
         
         let eventMask = (1 << CGEventType.keyDown.rawValue)
         guard let eventTap = CGEvent.tapCreate(
@@ -1107,6 +1138,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     }
     
     func showWindow() {
+        if let frontApp = NSWorkspace.shared.frontmostApplication, frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            self.targetApp = frontApp
+        }
+        
         if let mouseLocation = NSScreen.main?.frame {
             let width = window.frame.width
             let height = window.frame.height
@@ -1989,21 +2024,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             text = formatter.string(from: Date())
         }
         
-        DispatchQueue.main.async {
-            self.hideWindow()
-        }
-        
         let backspacesToDelete = deleteCount - 1
+        let src = CGEventSource(stateID: .hidSystemState)
         
         DispatchQueue.main.async {
             for _ in 0..<backspacesToDelete {
-                let bsDown = CGEvent(keyboardEventSource: nil, virtualKey: 51, keyDown: true)
-                let bsUp = CGEvent(keyboardEventSource: nil, virtualKey: 51, keyDown: false)
+                let bsDown = CGEvent(keyboardEventSource: src, virtualKey: 51, keyDown: true)
+                let bsUp = CGEvent(keyboardEventSource: src, virtualKey: 51, keyDown: false)
+                bsDown?.post(tap: .cghidEventTap)
+                bsUp?.post(tap: .cghidEventTap)
                 bsDown?.post(tap: .cgSessionEventTap)
                 bsUp?.post(tap: .cgSessionEventTap)
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 self.pasteDirectly(text: text)
             }
         }
@@ -2037,9 +2071,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             return
         }
         
-        // 3. Image Item (Paste image binary directly!)
+        // 3. Image Item (Paste image binary directly)
         if item.isImage, let imgPath = item.imagePath, let imgData = try? Data(contentsOf: URL(fileURLWithPath: imgPath)) {
             hideWindow()
+            if let target = self.targetApp, !target.isTerminated, target.bundleIdentifier != Bundle.main.bundleIdentifier {
+                target.activate(options: [.activateAllWindows])
+            }
             
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
@@ -2050,11 +2087,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                let vDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true)
+                let src = CGEventSource(stateID: .hidSystemState)
+                let vDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
                 vDown?.flags = .maskCommand
-                let vUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: false)
+                let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
                 vUp?.flags = .maskCommand
                 
+                vDown?.post(tap: .cghidEventTap)
+                vUp?.post(tap: .cghidEventTap)
                 vDown?.post(tap: .cgSessionEventTap)
                 vUp?.post(tap: .cgSessionEventTap)
             }
@@ -2090,15 +2130,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         }
         
         let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
         pasteboard.declareTypes([.string], owner: nil)
         pasteboard.setString(textToPaste, forType: .string)
         
+        self.hideWindow()
+        
+        if let target = self.targetApp, !target.isTerminated, target.bundleIdentifier != Bundle.main.bundleIdentifier {
+            target.activate(options: [.activateAllWindows])
+        }
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            let vDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true)
+            let src = CGEventSource(stateID: .hidSystemState)
+            let vDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
             vDown?.flags = .maskCommand
-            let vUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: false)
+            let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
             vUp?.flags = .maskCommand
             
+            vDown?.post(tap: .cghidEventTap)
+            vUp?.post(tap: .cghidEventTap)
             vDown?.post(tap: .cgSessionEventTap)
             vUp?.post(tap: .cgSessionEventTap)
         }

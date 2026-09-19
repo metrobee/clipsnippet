@@ -273,6 +273,12 @@ ClipSnippet sisaldab sisseehitatud macOS-i kontaktide otsingut (`CNContactStore`
 *   **Proportsionaalne pildiskaala:** Kopeeritud piltide ja ekraanitõmmiste eelvaade mahub alati mugavalt akna eelvaatekasti (`scaleProportionallyUpOrDown`), vältides akna venimist üle ekraani.
 *   **Automaatne akna taastamine (`adjustWindowSize`):** Kui kerid pildilt tagasi teksti, koodilõigu või kontakti peale, tõmbub aken koheselt tagasi vaikimisi kompaktsetesse mõõtmetesse (`860 × 480 px`).
 
+### Fookuse reaktiveerimine ja riistvarataseme sündmuste aheldamine (v1.5.2)
+
+*   **Sihtrakenduse fookuse automaatne taastamine:** Enne kleepimist taastab ClipSnippet vahetult eelmise aktiivse rakenduse fookuse (`targetApp.activate`), tagades kleepimise (`Cmd + V`) täpselt aktiivsesse tekstivälja.
+*   **Stabiilne signeerimisnõue (Designated Requirement):** Allkirjastatud stabiilse kriteeriumiga (`identifier "com.metrobee.clipsnippet"`), tagades macOS Juurdepääsetavuse (Accessibility) õiguste püsivuse.
+*   **Riistvarataseme sündmuste edastamine:** Klahvikombinatsioonid ja tagasivõtukäsud (Backspace) suunatakse paralleelselt HID ja seansitasemel (`.cghidEventTap` ja `.cgSessionEventTap`).
+
 ## Automaatne käivitumine sisselogimisel (LaunchAgent)
 
 Rakendus on seadistatud käivituma automaatselt arvuti sisselülitamisel macOS LaunchAgent abil.
