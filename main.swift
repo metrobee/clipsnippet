@@ -2031,13 +2031,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             for _ in 0..<backspacesToDelete {
                 let bsDown = CGEvent(keyboardEventSource: src, virtualKey: 51, keyDown: true)
                 let bsUp = CGEvent(keyboardEventSource: src, virtualKey: 51, keyDown: false)
-                bsDown?.post(tap: .cghidEventTap)
-                bsUp?.post(tap: .cghidEventTap)
                 bsDown?.post(tap: .cgSessionEventTap)
                 bsUp?.post(tap: .cgSessionEventTap)
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.pasteDirectly(text: text)
             }
         }
@@ -2093,8 +2091,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
                 let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
                 vUp?.flags = .maskCommand
                 
-                vDown?.post(tap: .cghidEventTap)
-                vUp?.post(tap: .cghidEventTap)
                 vDown?.post(tap: .cgSessionEventTap)
                 vUp?.post(tap: .cgSessionEventTap)
             }
@@ -2134,21 +2130,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         pasteboard.declareTypes([.string], owner: nil)
         pasteboard.setString(textToPaste, forType: .string)
         
-        self.hideWindow()
-        
-        if let target = self.targetApp, !target.isTerminated, target.bundleIdentifier != Bundle.main.bundleIdentifier {
-            target.activate(options: [.activateAllWindows])
+        let wasActive = NSApp.isActive
+        if wasActive {
+            self.hideWindow()
+            if let target = self.targetApp, !target.isTerminated, target.bundleIdentifier != Bundle.main.bundleIdentifier {
+                target.activate(options: [.activateAllWindows])
+            }
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        let delay = wasActive ? 0.15 : 0.03
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             let src = CGEventSource(stateID: .hidSystemState)
             let vDown = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)
             vDown?.flags = .maskCommand
             let vUp = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
             vUp?.flags = .maskCommand
             
-            vDown?.post(tap: .cghidEventTap)
-            vUp?.post(tap: .cghidEventTap)
             vDown?.post(tap: .cgSessionEventTap)
             vUp?.post(tap: .cgSessionEventTap)
         }
