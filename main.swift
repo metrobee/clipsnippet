@@ -690,17 +690,6 @@ class BorderlessWindow: NSPanel {
             }
         }
         
-        // Return key (36) or Keypad Enter (76)
-        if event.keyCode == 36 || event.keyCode == 76 {
-            if let appDelegate = NSApp.delegate as? AppDelegate {
-                let selectedRow = appDelegate.tableView.selectedRow
-                if selectedRow >= 0 {
-                    appDelegate.selectAndPaste(index: selectedRow)
-                    return true
-                }
-            }
-        }
-        
         // Delete history items using Option+Delete, Control+Delete, Command+Delete
         // or just Backspace/Delete if the search field is empty
         if event.keyCode == 51 || event.keyCode == 117 {
@@ -757,6 +746,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     var lastCmdCTargetPrevString: String? = nil
     var targetApp: NSRunningApplication? = nil
     var lastAXLogTime: TimeInterval = 0
+    var lastPasteTime: TimeInterval = 0
     
     enum TableRow {
         case header(title: String)
@@ -2042,6 +2032,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
     }
 
     func selectAndPaste(index: Int) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastPasteTime > 0.35 else { return }
+        lastPasteTime = now
+        
         guard index >= 0 && index < filteredRows.count else { return }
         guard case .item(let item) = filteredRows[index] else { return }
         
@@ -2078,11 +2072,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
             
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.declareTypes([.png, .tiff], owner: nil)
-            pasteboard.setData(imgData, forType: .png)
-            if let nsImg = NSImage(data: imgData), let tiffData = nsImg.tiffRepresentation {
-                pasteboard.setData(tiffData, forType: .tiff)
-            }
+            let pbItem = NSPasteboardItem()
+            pbItem.setData(imgData, forType: .png)
+            pasteboard.writeObjects([pbItem])
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 let src = CGEventSource(stateID: .hidSystemState)
