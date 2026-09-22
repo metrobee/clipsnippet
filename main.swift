@@ -861,6 +861,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTable
         window.backgroundColor = .clear
         window.hasShadow = true
         window.level = .statusBar
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.delegate = self
         
         // Glassmorphic background blur

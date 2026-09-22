@@ -2,3 +2,4 @@ ClipSnippet
 ClipSnippet.app/
 *.txt
 .DS_Store
+ClipSnippet.app.disabled-duplicate-bundle-id/

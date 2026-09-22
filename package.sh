@@ -27,7 +27,7 @@ cat <<EOF > ClipSnippet.app/Contents/Info.plist
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.5.4</string>
+    <string>1.5.5</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
@@ -53,6 +53,16 @@ codesign --force --deep --sign - --requirements '=designated => identifier "com.
 # 6. Create release zip
 rm -f ClipSnippet.zip
 zip -r -y -q ClipSnippet.zip ClipSnippet.app
+
+# 7. The local ClipSnippet.app carries the same CFBundleIdentifier as the
+#    /Applications copy. If Launch Services indexes both, `open` (used by
+#    the LaunchAgent to start the app) can resolve to whichever one it
+#    registered last, ignoring the literal path argument - so unregister
+#    the local copy right after packaging to keep /Applications the only
+#    resolvable target for com.metrobee.clipsnippet.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+"$LSREGISTER" -u "$(pwd)/ClipSnippet.app" 2>/dev/null || true
+"$LSREGISTER" -f /Applications/ClipSnippet.app 2>/dev/null || true
 
 echo "[SUCCESS] ClipSnippet.app packaged, deployed to /Applications, and signed successfully."
 echo "[INFO] SHA256: $(shasum -a 256 ClipSnippet.zip | awk '{print $1}')"
